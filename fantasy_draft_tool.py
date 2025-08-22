@@ -101,6 +101,10 @@ class FantasyDraftTool:
         
         reader = csv.DictReader(csv_file)
         
+        # Debug: Print column names to help with troubleshooting
+        if not self.players:  # Only print once
+            print(f"CSV columns found: {list(reader.fieldnames)}")
+        
         for row in reader:
             try:
                 # Parse position and position rank
@@ -112,8 +116,12 @@ class FantasyDraftTool:
                 position_rank = int(pos_match.group(2))
                 
                 # Parse SOS season (extract number from "X out of 5 stars")
-                sos_match = re.search(r'(\d+)', row['SOS SEASON'])
-                sos_season = row['SOS SEASON'] if not sos_match else f"{sos_match.group(1)}/5"
+                sos_field = row.get('SOS SEASON', row.get('SOS', ''))
+                sos_match = re.search(r'(\d+)', sos_field)
+                sos_season = sos_field if not sos_match else f"{sos_match.group(1)}/5"
+                
+                # Handle both column name variations for ECR VS ADP
+                ecr_vs_adp_field = row.get('ECR VS. ADP', row.get('ECR VS ADP', ''))
                 
                 player = Player(
                     name=row['PLAYER NAME'].strip(),
@@ -122,15 +130,17 @@ class FantasyDraftTool:
                     overall_rank=int(row['RK']),
                     position_rank=position_rank,
                     tier=int(row['TIERS']),
-                    bye_week=self._parse_int_field(row['BYE WEEK'], 0),
+                    bye_week=self._parse_int_field(row.get('BYE WEEK', row.get('BYE', '')), 0),
                     sos_season=sos_season,
-                    ecr_vs_adp=self._parse_int_field(row['ECR VS. ADP'], 0)
+                    ecr_vs_adp=self._parse_int_field(ecr_vs_adp_field, 0)
                 )
                 
                 self.players.append(player)
                 
             except (ValueError, KeyError) as e:
-                print(f"Error parsing row: {row} - {e}")
+                print(f"Error parsing row: {row}")
+                print(f"Error details: {e}")
+                print(f"Available columns: {list(row.keys())}")
                 continue
         
         print(f"Loaded {len(self.players)} players from FantasyPros data")

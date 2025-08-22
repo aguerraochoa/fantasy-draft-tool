@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 from typing import List, Dict
 import io
 
@@ -15,6 +16,29 @@ def initialize_session_state() -> None:
     if "draft_tool" not in st.session_state:
         st.session_state.draft_tool = None
 
+
+def extract_draft_id_from_url(url: str) -> str:
+    """Extract draft ID from Sleeper URL"""
+    if not url:
+        return ""
+    
+    # Remove any whitespace
+    url = url.strip()
+    
+    # Handle different URL formats
+    patterns = [
+        r'https?://sleeper\.app/draft/(\d+)',
+        r'sleeper\.app/draft/(\d+)',
+        r'/draft/(\d+)',
+        r'(\d+)'  # Just the number if that's all they paste
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    
+    return ""
 
 def inject_css() -> None:
     """Inject minimal CSS for readable vertical player cards."""
@@ -246,29 +270,31 @@ def render_sidebar() -> None:
 
         st.divider()
 
-        # Sleeper draft ID section
+        # Sleeper draft URL section
         st.subheader("Sleeper Draft Integration")
         st.markdown("""
         **Optional:** Connect to a live Sleeper draft to track picks in real-time.
         
-        To get your draft ID:
-        1. Open your Sleeper draft
-        2. Look at the URL: `https://sleeper.app/draft/`**`YOUR_DRAFT_ID`**
-        3. Copy the draft ID and paste it below
+        Simply paste your Sleeper draft URL below:
         """)
         
-        draft_id_default = ""
+        draft_url_default = ""
         if st.session_state.draft_tool and st.session_state.draft_tool.sleeper_draft_id:
-            draft_id_default = st.session_state.draft_tool.sleeper_draft_id or ""
+            draft_url_default = f"https://sleeper.app/draft/{st.session_state.draft_tool.sleeper_draft_id}"
 
-        draft_id = st.text_input("Sleeper Draft ID", value=draft_id_default, placeholder="e.g., 1234567890")
+        draft_url = st.text_input("Sleeper Draft URL", value=draft_url_default, placeholder="https://sleeper.app/draft/1234567890")
 
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("Set/Update Draft ID", use_container_width=True):
+            if st.button("Connect to Draft", use_container_width=True):
                 if st.session_state.draft_tool:
-                    st.session_state.draft_tool.set_sleeper_draft_id(draft_id)
-                    st.success("✅ Draft ID updated.")
+                    # Extract draft ID from URL
+                    draft_id = extract_draft_id_from_url(draft_url)
+                    if draft_id:
+                        st.session_state.draft_tool.set_sleeper_draft_id(draft_id)
+                        st.success(f"✅ Connected to draft ID: {draft_id}")
+                    else:
+                        st.error("❌ Could not extract draft ID from URL. Please check the format.")
                 else:
                     st.warning("⚠️ Load rankings first.")
         with col_b:
@@ -278,7 +304,7 @@ def render_sidebar() -> None:
                         st.session_state.draft_tool.fetch_sleeper_draft_picks()
                     st.success("✅ Draft picks refreshed.")
                 else:
-                    st.warning("⚠️ Set Draft ID first.")
+                    st.warning("⚠️ Connect to draft first.")
 
 
 def render_search(draft_tool: FantasyDraftTool) -> None:

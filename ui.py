@@ -154,6 +154,30 @@ def inject_css() -> None:
         [data-testid="stFileUploader"] div[style*="background"] {
             background: #111827 !important;
         }
+        
+        /* Code blocks and inline code styling for dark theme */
+        code, pre, .stMarkdown code {
+            background: #1f2937 !important;
+            color: #e5e7eb !important;
+            border: 1px solid #334155 !important;
+            border-radius: 4px !important;
+            padding: 2px 6px !important;
+        }
+        pre {
+            background: #1f2937 !important;
+            color: #e5e7eb !important;
+            border: 1px solid #334155 !important;
+            border-radius: 8px !important;
+            padding: 12px !important;
+        }
+        /* Inline code styling */
+        .stMarkdown p code {
+            background: #1f2937 !important;
+            color: #e5e7eb !important;
+            border: 1px solid #334155 !important;
+            border-radius: 4px !important;
+            padding: 2px 6px !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,

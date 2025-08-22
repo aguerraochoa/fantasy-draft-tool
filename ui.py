@@ -112,6 +112,48 @@ def inject_css() -> None:
         .player-injury { color: #f87171; font-size: 0.9rem; margin-top: 6px; font-weight: 700; }
         .badge { display:inline-block; padding: 2px 8px; background:#1f2937; border:1px solid #334155; color:#cbd5e1; border-radius:999px; font-size:12px; margin-right:6px; }
         .num-badge { display:inline-block; min-width: 24px; padding: 2px 6px; margin-right: 8px; text-align:center; background:#0b1220; border:1px solid #334155; color:#e5e7eb; border-radius:8px; font-weight:800; }
+        
+        /* File uploader styling for dark theme */
+        .stFileUploader {
+            background: #111827 !important;
+            border: 2px dashed #334155 !important;
+            border-radius: 12px !important;
+            padding: 20px !important;
+        }
+        .stFileUploader > div {
+            background: #111827 !important;
+            border: none !important;
+        }
+        .stFileUploader [data-testid="stFileUploader"] {
+            background: #111827 !important;
+            border: 2px dashed #334155 !important;
+            border-radius: 12px !important;
+        }
+        .stFileUploader [data-testid="stFileUploader"] > div {
+            background: #111827 !important;
+            border: none !important;
+        }
+        /* File uploader text and button */
+        .stFileUploader p, .stFileUploader span, .stFileUploader label {
+            color: #e5e7eb !important;
+        }
+        .stFileUploader button {
+            background: #1f2937 !important;
+            color: #ffffff !important;
+            border: 1px solid #334155 !important;
+            border-radius: 8px !important;
+        }
+        .stFileUploader button:hover {
+            background: #263244 !important;
+            border-color: #3b4456 !important;
+        }
+        /* Override any white backgrounds in file uploader */
+        [data-testid="stFileUploader"] * {
+            background: #111827 !important;
+        }
+        [data-testid="stFileUploader"] div[style*="background"] {
+            background: #111827 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,

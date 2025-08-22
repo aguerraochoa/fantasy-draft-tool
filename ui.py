@@ -27,10 +27,13 @@ def extract_draft_id_from_url(url: str) -> str:
     
     # Handle different URL formats
     patterns = [
-        r'https?://sleeper\.app/draft/(\d+)',
-        r'sleeper\.app/draft/(\d+)',
-        r'/draft/(\d+)',
-        r'(\d+)'  # Just the number if that's all they paste
+        r'https?://sleeper\.com/draft/nfl/(\d+)',  # New format: sleeper.com/draft/nfl/ID
+        r'https?://sleeper\.app/draft/(\d+)',      # Old format: sleeper.app/draft/ID
+        r'sleeper\.com/draft/nfl/(\d+)',           # Without protocol
+        r'sleeper\.app/draft/(\d+)',               # Without protocol
+        r'/draft/nfl/(\d+)',                       # Just path with nfl
+        r'/draft/(\d+)',                           # Just path
+        r'(\d+)'                                   # Just the number if that's all they paste
     ]
     
     for pattern in patterns:

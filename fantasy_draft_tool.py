@@ -107,9 +107,14 @@ class FantasyDraftTool:
         
         for row in reader:
             try:
+                # Debug: Print first few rows to see the data
+                if len(self.players) < 3:
+                    print(f"Row data: {row}")
+                
                 # Parse position and position rank
                 pos_match = re.match(r'([A-Z]+)(\d+)', row['POS'])
                 if not pos_match:
+                    print(f"Skipping row - couldn't parse position: {row['POS']}")
                     continue
                 
                 position = pos_match.group(1)
@@ -123,13 +128,19 @@ class FantasyDraftTool:
                 # Handle both column name variations for ECR VS ADP
                 ecr_vs_adp_field = row.get('ECR VS. ADP', row.get('ECR VS ADP', ''))
                 
+                # Parse tier - handle potential string values
+                tier_value = row['TIERS']
+                if isinstance(tier_value, str):
+                    tier_value = tier_value.strip()
+                tier = int(tier_value)
+                
                 player = Player(
                     name=row['PLAYER NAME'].strip(),
                     team=row['TEAM'].strip(),
                     position=position,
                     overall_rank=int(row['RK']),
                     position_rank=position_rank,
-                    tier=int(row['TIERS']),
+                    tier=tier,
                     bye_week=self._parse_int_field(row.get('BYE WEEK', row.get('BYE', '')), 0),
                     sos_season=sos_season,
                     ecr_vs_adp=self._parse_int_field(ecr_vs_adp_field, 0)

@@ -3,3 +3,4 @@ fuzzywuzzy>=0.18.0
 python-Levenshtein>=0.12.0
 streamlit>=1.36.0
 urllib3<2
+fantasy-rankings-scraper>=0.0.4

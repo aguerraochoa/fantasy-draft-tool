@@ -156,6 +156,127 @@ class FantasyDraftTool:
         
         print(f"Loaded {len(self.players)} players from FantasyPros data")
     
+    def load_scraped_data(self, scraped_players: List[Dict], scoring_format: str) -> None:
+        """Load and parse scraped FantasyPros data"""
+        print(f"Loading {scoring_format} scraped data...")
+        
+        self.players = []  # Clear existing players
+        
+        for player_data in scraped_players:
+            try:
+                # Extract data from scraped format
+                name = player_data.get('player_name', '').strip()
+                team = player_data.get('player_team_id', '').strip()
+                position = player_data.get('player_position_id', '').strip()
+                overall_rank = int(player_data.get('rank_ecr', 0))
+                tier = int(player_data.get('tier', 1))
+                bye_week = self._parse_int_field(player_data.get('player_bye_week', ''), 0)
+                
+                # Parse position rank from pos_rank field (e.g., "WR1" -> 1)
+                pos_rank_str = player_data.get('pos_rank', '')
+                position_rank = 0
+                if pos_rank_str:
+                    pos_match = re.match(r'[A-Z]+(\d+)', pos_rank_str)
+                    if pos_match:
+                        position_rank = int(pos_match.group(1))
+                
+                # Set default values for missing fields
+                sos_season = "3/5"  # Default strength of schedule
+                ecr_vs_adp = 0      # Default ECR vs ADP difference
+                
+                player = Player(
+                    name=name,
+                    team=team,
+                    position=position,
+                    overall_rank=overall_rank,
+                    position_rank=position_rank,
+                    tier=tier,
+                    bye_week=bye_week,
+                    sos_season=sos_season,
+                    ecr_vs_adp=ecr_vs_adp
+                )
+                
+                self.players.append(player)
+                
+            except (ValueError, KeyError) as e:
+                print(f"Error parsing scraped player data: {player_data}")
+                print(f"Error details: {e}")
+                continue
+        
+        print(f"Loaded {len(self.players)} players from {scoring_format} scraped data")
+    
+    def load_custom_csv_data(self, csv_content: str) -> None:
+        """Load and parse custom CSV data with standardized column names"""
+        print("Loading custom CSV data...")
+        
+        self.players = []  # Clear existing players
+        
+        # Create a StringIO object to simulate a file
+        from io import StringIO
+        csv_file = StringIO(csv_content)
+        
+        reader = csv.DictReader(csv_file)
+        
+        # Debug: Print column names to help with troubleshooting
+        if not self.players:  # Only print once
+            print(f"Custom CSV columns found: {list(reader.fieldnames)}")
+        
+        for row in reader:
+            try:
+                # Debug: Print first few rows to see the data
+                if len(self.players) < 3:
+                    print(f"Custom row data: {row}")
+                
+                # Parse position and position rank from pos_rank field if available
+                position_rank = 0
+                if 'pos_rank' in row and row['pos_rank']:
+                    pos_match = re.match(r'[A-Z]+(\d+)', row['pos_rank'])
+                    if pos_match:
+                        position_rank = int(pos_match.group(1))
+                
+                # Parse tier with default value
+                tier = 1  # Default tier
+                if 'tier' in row and row['tier']:
+                    try:
+                        tier = int(row['tier'])
+                    except ValueError:
+                        tier = 1
+                
+                # Parse bye week with default value
+                bye_week = 0  # Default bye week
+                if 'bye_week' in row and row['bye_week']:
+                    bye_week = self._parse_int_field(row['bye_week'], 0)
+                
+                # Parse ECR vs ADP with default value
+                ecr_vs_adp = 0  # Default ECR vs ADP difference
+                if 'ecr_vs_adp' in row and row['ecr_vs_adp']:
+                    ecr_vs_adp = self._parse_int_field(row['ecr_vs_adp'], 0)
+                
+                # Set default values for missing fields
+                sos_season = "3/5"  # Default strength of schedule
+                
+                player = Player(
+                    name=row['name'].strip(),
+                    team=row['team'].strip(),
+                    position=row['position'].strip(),
+                    overall_rank=int(row['rank']),
+                    position_rank=position_rank,
+                    tier=tier,
+                    bye_week=bye_week,
+                    sos_season=sos_season,
+                    ecr_vs_adp=ecr_vs_adp
+                )
+                
+                self.players.append(player)
+                
+            except (ValueError, KeyError) as e:
+                print(f"Error parsing custom CSV row: {row}")
+                print(f"Error details: {e}")
+                print(f"Available columns: {list(row.keys())}")
+                continue
+        
+        print(f"Loaded {len(self.players)} players from custom CSV data")
+    
     def load_fantasypros_data(self) -> None:
         """Load and parse FantasyPros CSV data from file"""
         print("Loading FantasyPros data...")

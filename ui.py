@@ -7,6 +7,7 @@ import io
 import streamlit as st
 
 from fantasy_draft_tool import FantasyDraftTool, Player
+from league_manager import LeagueManager
 
 
 st.set_page_config(page_title="Fantasy Draft Tool", layout="wide")
@@ -89,6 +90,185 @@ def inject_css() -> None:
             background: #1f2937 !important;
             color: #ffffff !important;
             border: 1px solid #334155 !important;
+        }
+        /* Form submit buttons - darker theme */
+        .stFormSubmitButton > button {
+            background: #0f172a !important;
+            color: #e5e7eb !important;
+            border: 1px solid #475569 !important;
+            border-radius: 8px !important;
+        }
+        .stFormSubmitButton > button:hover {
+            background: #1e293b !important;
+            border-color: #64748b !important;
+        }
+        /* Download buttons - darker theme */
+        .stDownloadButton > button {
+            background: #0f172a !important;
+            color: #e5e7eb !important;
+            border: 1px solid #475569 !important;
+            border-radius: 8px !important;
+        }
+        .stDownloadButton > button:hover {
+            background: #1e293b !important;
+            border-color: #64748b !important;
+        }
+        /* Selectbox styling - dark theme */
+        .stSelectbox > div > div {
+            background: #0f172a !important;
+            border: 1px solid #475569 !important;
+            color: #e5e7eb !important;
+        }
+        .stSelectbox > div > div:hover {
+            border-color: #64748b !important;
+        }
+        .stSelectbox > div > div > div {
+            background: #0f172a !important;
+            color: #e5e7eb !important;
+        }
+        /* Fix selectbox text color */
+        .stSelectbox > div > div > div > div {
+            color: #e5e7eb !important;
+            background: #0f172a !important;
+        }
+        /* Fix selectbox placeholder and selected text */
+        .stSelectbox input, .stSelectbox select {
+            color: #e5e7eb !important;
+            background: #0f172a !important;
+        }
+        /* Fix input field placeholder text color */
+        .stTextInput input::placeholder {
+            color: #9ca3af !important;
+            opacity: 0.8 !important;
+        }
+        .stTextInput input {
+            color: #e5e7eb !important;
+            background: #0f172a !important;
+        }
+        /* Ensure dropdown options are visible */
+        .stSelectbox [role="listbox"] {
+            background: #0f172a !important;
+            color: #e5e7eb !important;
+        }
+        .stSelectbox [role="option"] {
+            background: #0f172a !important;
+            color: #e5e7eb !important;
+        }
+        .stSelectbox [role="option"]:hover {
+            background: #1e293b !important;
+        }
+        /* Target all selectbox elements to remove white backgrounds */
+        .stSelectbox * {
+            background: #0f172a !important;
+        }
+        /* Main selector text should be light */
+        .stSelectbox > div > div > div > div {
+            color: #e5e7eb !important;
+        }
+        /* Specific targeting for the selected option display */
+        .stSelectbox > div > div > div > div > div {
+            background: #0f172a !important;
+            color: #e5e7eb !important;
+        }
+        /* Target any remaining white backgrounds in selectbox */
+        .stSelectbox div[style*="background"] {
+            background: #0f172a !important;
+        }
+        .stSelectbox div[style*="white"] {
+            background: #0f172a !important;
+        }
+        /* Force override any white backgrounds with !important */
+        .stSelectbox div[style*="background-color: white"] {
+            background-color: #0f172a !important;
+        }
+        .stSelectbox div[style*="background: white"] {
+            background: #0f172a !important;
+        }
+        /* Target the specific dropdown option that's showing white */
+        .stSelectbox > div > div > div > div > div[style*="background"] {
+            background: #0f172a !important;
+        }
+        /* Override any remaining white backgrounds */
+        .stSelectbox div {
+            background: #0f172a !important;
+        }
+        /* Ensure text remains visible */
+        .stSelectbox div {
+            color: #e5e7eb !important;
+        }
+        /* Target the dropdown list container specifically */
+        .stSelectbox [data-baseweb="popover"] {
+            background: #0f172a !important;
+        }
+        .stSelectbox [data-baseweb="popover"] * {
+            background: #0f172a !important;
+            color: #000000 !important;
+        }
+        /* Target any popover or dropdown containers */
+        .stSelectbox [role="listbox"], .stSelectbox [role="menu"] {
+            background: #0f172a !important;
+        }
+        .stSelectbox [role="listbox"] *, .stSelectbox [role="menu"] * {
+            background: #0f172a !important;
+            color: #000000 !important;
+        }
+        /* Force override any remaining white backgrounds */
+        .stSelectbox *[style*="white"] {
+            background: #0f172a !important;
+        }
+        .stSelectbox *[style*="background"] {
+            background: #0f172a !important;
+        }
+        /* Target the specific dropdown that's showing white */
+        .stSelectbox > div > div > div > div > div > div {
+            background: #0f172a !important;
+        }
+        /* Override any Streamlit-specific dropdown styling */
+        .stSelectbox [data-testid="stSelectbox"] {
+            background: #0f172a !important;
+        }
+        .stSelectbox [data-testid="stSelectbox"] * {
+            background: #0f172a !important;
+        }
+        /* Fix expander header text color for readability */
+        .streamlit-expanderHeader {
+            color: #e5e7eb !important;
+            background: #0f172a !important;
+        }
+        .streamlit-expanderHeader:hover {
+            color: #ffffff !important;
+            background: #1e293b !important;
+        }
+        /* Ensure expander content text is readable */
+        .streamlit-expanderContent {
+            color: #e5e7eb !important;
+        }
+        /* Fix any white text in expanders */
+        .streamlit-expanderHeader * {
+            color: #e5e7eb !important;
+        }
+        /* Force override expander header background */
+        .streamlit-expanderHeader {
+            background-color: #0f172a !important;
+        }
+        /* Target the expander header container */
+        [data-testid="stExpander"] {
+            background: #0f172a !important;
+        }
+        [data-testid="stExpander"] * {
+            background: #0f172a !important;
+        }
+        /* Override any white backgrounds in expanders */
+        .streamlit-expanderHeader[style*="background"] {
+            background: #0f172a !important;
+        }
+        .streamlit-expanderHeader div[style*="background"] {
+            background: #0f172a !important;
+        }
+        /* Ensure buttons are properly aligned */
+        .stButton > button {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
         }
         /* Streamlit popover/menu (Deploy/3-dot menu) */
         [data-baseweb="popover"] {
@@ -236,78 +416,216 @@ def render_sidebar() -> None:
     with st.sidebar:
         st.header("Setup")
         
-        # File uploader for CSV
-        uploaded_file = st.file_uploader(
-            "Upload FantasyPros CSV", 
-            type=['csv'],
-            help="Upload your FantasyPros rankings CSV file"
-        )
+        # FantasyPros Rankings Section
+        st.subheader("🎯 FantasyPros Rankings")
+        st.markdown("Choose your scoring format:")
         
-        if uploaded_file is not None:
-            # Show file info
-            st.success(f"✅ File uploaded: {uploaded_file.name}")
-            
-            # Load data button
-            if st.button("Load rankings and Sleeper data", use_container_width=True):
-                try:
-                    with st.spinner("Loading data..."):
-                        # Create a temporary file-like object from the uploaded file
-                        csv_content = uploaded_file.read().decode('utf-8')
-                        
-                        # Create draft tool with the uploaded data
-                        draft_tool = FantasyDraftTool("")  # Empty path since we're using uploaded data
-                        
-                        # Load FantasyPros data from the uploaded content
-                        draft_tool.load_fantasypros_data_from_content(csv_content)
-                        
-                        # Fetch and match Sleeper data
-                        draft_tool.fetch_sleeper_data()
-                        draft_tool.match_players()
-                        
-                        st.session_state.draft_tool = draft_tool
-                        st.success(f"✅ Loaded {len(draft_tool.players)} players successfully!")
-                        
-                except Exception as ex:
-                    st.error(f"❌ Error loading data: {ex}")
-                    st.error("Make sure your CSV file has the correct FantasyPros format with columns: RK, TIERS, PLAYER NAME, TEAM, POS, BYE WEEK, SOS SEASON, ECR VS. ADP")
+        # All three buttons vertically stacked
+        if st.button("📊 Standard", use_container_width=True):
+            try:
+                with st.spinner("Loading Standard rankings..."):
+                    # Use scraper to get Standard rankings
+                    from fantasy_rankings_scraper import scrape
+                    scraper = scrape('fantasypros.com')
+                    standard_players = scraper.data[1]  # Standard format
+                    
+                    # Create draft tool and load data
+                    draft_tool = FantasyDraftTool("")
+                    draft_tool.load_scraped_data(standard_players, "Standard")
+                    
+                    # Fetch and match Sleeper data
+                    draft_tool.fetch_sleeper_data()
+                    draft_tool.match_players()
+                    
+                    st.session_state.draft_tool = draft_tool
+                    st.success(f"✅ Loaded {len(draft_tool.players)} Standard players successfully!")
+                    
+            except Exception as ex:
+                st.error(f"❌ Error loading Standard rankings: {ex}")
+        
+        if st.button("📈 Half-PPR", use_container_width=True):
+            try:
+                with st.spinner("Loading Half-PPR rankings..."):
+                    # Use scraper to get Half-PPR rankings
+                    from fantasy_rankings_scraper import scrape
+                    scraper = scrape('fantasypros.com')
+                    half_ppr_players = scraper.data[2]  # Half-PPR format
+                    
+                    # Create draft tool and load data
+                    draft_tool = FantasyDraftTool("")
+                    draft_tool.load_scraped_data(half_ppr_players, "Half-PPR")
+                    
+                    # Fetch and match Sleeper data
+                    draft_tool.fetch_sleeper_data()
+                    draft_tool.match_players()
+                    
+                    st.session_state.draft_tool = draft_tool
+                    st.success(f"✅ Loaded {len(draft_tool.players)} Half-PPR players successfully!")
+                    
+            except Exception as ex:
+                st.error(f"❌ Error loading Half-PPR rankings: {ex}")
+        
+        if st.button("🏈 PPR", use_container_width=True):
+            try:
+                with st.spinner("Loading PPR rankings..."):
+                    # Use scraper to get PPR rankings
+                    from fantasy_rankings_scraper import scrape
+                    scraper = scrape('fantasypros.com')
+                    ppr_players = scraper.data[3]  # PPR format
+                    
+                    # Create draft tool and load data
+                    draft_tool = FantasyDraftTool("")
+                    draft_tool.load_scraped_data(ppr_players, "PPR")
+                    
+                    # Fetch and match Sleeper data
+                    draft_tool.fetch_sleeper_data()
+                    draft_tool.match_players()
+                    
+                    st.session_state.draft_tool = draft_tool
+                    st.success(f"✅ Loaded {len(draft_tool.players)} PPR players successfully!")
+                    
+            except Exception as ex:
+                st.error(f"❌ Error loading PPR rankings: {ex}")
 
         st.divider()
 
-        # Sleeper draft URL section
-        st.subheader("Sleeper Draft Integration")
-        st.markdown("""
-        **Optional:** Connect to a live Sleeper draft to track picks in real-time.
+        # League Management Section
+        st.subheader("🏈 League Management")
         
-        Simply paste your Sleeper draft URL below:
-        """)
+        # Initialize league manager in session state
+        if "league_manager" not in st.session_state:
+            from league_manager import LeagueManager
+            st.session_state.league_manager = LeagueManager()
         
-        draft_url_default = ""
-        if st.session_state.draft_tool and st.session_state.draft_tool.sleeper_draft_id:
-            draft_url_default = f"https://sleeper.app/draft/{st.session_state.draft_tool.sleeper_draft_id}"
-
-        draft_url = st.text_input("Sleeper Draft URL", value=draft_url_default, placeholder="https://sleeper.app/draft/1234567890")
-
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("Connect to Draft", use_container_width=True):
-                if st.session_state.draft_tool:
-                    # Extract draft ID from URL
-                    draft_id = extract_draft_id_from_url(draft_url)
-                    if draft_id:
-                        st.session_state.draft_tool.set_sleeper_draft_id(draft_id)
-                        st.success(f"✅ Connected to draft ID: {draft_id}")
+        league_manager = st.session_state.league_manager
+        
+        # Saved Leagues Section
+        if league_manager.get_league_count() > 0:
+            st.markdown("**Saved Leagues:**")
+            
+            # Get league names in original order (not sorted by last used)
+            league_names = league_manager.get_all_leagues()
+            
+            # Display each league as a button
+            for league_name in league_names:
+                league = league_manager.get_league(league_name)
+                if league:
+                    # Check if this league is currently connected
+                    is_connected = (st.session_state.draft_tool and 
+                                  st.session_state.draft_tool.sleeper_draft_id == league.draft_id)
+                    
+                    # Create button with different styling based on connection status
+                    if is_connected:
+                        # Connected league - show as active
+                        if st.button(f"🏈 {league_name} (Connected)", use_container_width=True, 
+                                   key=f"league_{league_name}"):
+                            # Already connected, just refresh
+                            st.rerun()
                     else:
-                        st.error("❌ Could not extract draft ID from URL. Please check the format.")
-                else:
-                    st.warning("⚠️ Load rankings first.")
-        with col_b:
-            if st.button("Refresh Draft Picks", use_container_width=True):
-                if st.session_state.draft_tool and st.session_state.draft_tool.sleeper_draft_id:
-                    with st.spinner("Refreshing draft picks..."):
-                        st.session_state.draft_tool.fetch_sleeper_draft_picks()
-                    st.success("✅ Draft picks refreshed.")
-                else:
-                    st.warning("⚠️ Connect to draft first.")
+                        # Not connected - show as clickable
+                        if st.button(f"🏈 {league_name}", use_container_width=True, 
+                                   key=f"league_{league_name}"):
+                            if st.session_state.draft_tool:
+                                st.session_state.draft_tool.set_sleeper_draft_id(league.draft_id)
+                                league_manager.mark_league_used(league_name)
+                                st.success(f"✅ Connected to {league_name}!")
+                                st.rerun()
+                            else:
+                                st.warning("⚠️ Load rankings first.")
+                    
+                    # Add delete button below each league button
+                    if st.button(f"🗑️ Delete {league_name}", use_container_width=True, key=f"delete_{league_name}"):
+                        if league_manager.delete_league(league_name):
+                            st.success(f"✅ Deleted {league_name}")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to delete league")
+                    
+                    # Smaller separator between leagues
+                    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        
+        # Add New League Section
+        with st.expander("➕ Add New League", expanded=False):
+            with st.form("add_league_form"):
+                new_league_name = st.text_input(
+                    "League Name", 
+                    placeholder="e.g., My Main League, Work League, etc.",
+                    key="new_league_name"
+                )
+                
+                new_draft_url = st.text_input(
+                    "Sleeper Draft URL", 
+                    placeholder="https://sleeper.app/draft/1234567890",
+                    key="new_draft_url"
+                )
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.form_submit_button("Save League", use_container_width=True):
+                        if new_league_name.strip() and new_draft_url.strip():
+                            # Extract draft ID from URL
+                            draft_id = extract_draft_id_from_url(new_draft_url)
+                            if draft_id:
+                                if league_manager.add_league(new_league_name.strip(), new_draft_url.strip(), draft_id):
+                                    st.success(f"✅ Saved league: {new_league_name}")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ League name already exists. Choose a different name.")
+                            else:
+                                st.error("❌ Could not extract draft ID from URL. Please check the format.")
+                        else:
+                            st.error("❌ Please fill in both league name and draft URL.")
+                
+                with col_b:
+                    if st.form_submit_button("Test URL", use_container_width=True):
+                        if new_draft_url.strip():
+                            draft_id = extract_draft_id_from_url(new_draft_url)
+                            if draft_id:
+                                st.success(f"✅ Valid URL! Draft ID: {draft_id}")
+                            else:
+                                st.error("❌ Invalid URL format")
+                        else:
+                            st.error("❌ Please enter a draft URL first")
+        
+        # Export/Import Section
+        with st.expander("📁 Export/Import Leagues", expanded=False):
+            # Export section (top)
+            if league_manager.get_league_count() > 0:
+                export_data = league_manager.export_leagues()
+                st.download_button(
+                    label="📥 Export Leagues",
+                    data=export_data,
+                    file_name="fantasy_leagues_backup.json",
+                    mime="application/json"
+                )
+            else:
+                st.info("No leagues to export")
+            
+            # Import section (bottom)
+            st.markdown("**Import Leagues:**")
+            uploaded_leagues = st.file_uploader(
+                "Import Leagues",
+                type=['json'],
+                help="Upload a previously exported leagues file"
+            )
+            
+            if uploaded_leagues is not None:
+                try:
+                    leagues_content = uploaded_leagues.read().decode('utf-8')
+                    if league_manager.import_leagues(leagues_content):
+                        st.success("✅ Leagues imported successfully!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to import leagues")
+                except Exception as e:
+                    st.error(f"❌ Error importing leagues: {e}")
+        
+        st.divider()
+        
+        # Quick Draft Actions (if connected)
+        if st.session_state.draft_tool and st.session_state.draft_tool.sleeper_draft_id:
+            # The refresh button will be moved to the main content area
+            pass
 
 
 def render_search(draft_tool: FantasyDraftTool) -> None:
@@ -403,23 +721,43 @@ def render_top_overall(draft_tool: FantasyDraftTool) -> None:
 
 def main() -> None:
     initialize_session_state()
-    st.markdown('<div class="app-title">Fantasy Draft Tool</div>', unsafe_allow_html=True)
-    st.markdown('<div class="app-caption">Upload your FantasyPros CSV and get live draft rankings with Sleeper integration.</div>', unsafe_allow_html=True)
     inject_css()
 
     render_sidebar()
 
     if not st.session_state.draft_tool:
-        st.info("👆 Use the sidebar to upload your FantasyPros CSV file and load the data.")
+        st.info("👆 Use the sidebar to load FantasyPros rankings or upload your custom CSV file.")
         st.markdown("""
-        ### How to get your FantasyPros CSV:
-        1. Go to [FantasyPros](https://www.fantasypros.com/nfl/rankings/consensus-cheatsheets.php)
-        2. Export your rankings as CSV
-        3. Upload the file using the sidebar
+        ### Quick Start Options:
+        
+        **🎯 FantasyPros Rankings (Recommended):**
+        - Click one of the scoring format buttons (Standard, Half-PPR, or PPR)
+        - Rankings are automatically loaded from FantasyPros
+        - No file download needed!
+        
+        **📁 Custom Rankings:**
+        - Upload your own CSV file with the required format
+        - See the CSV format requirements in the sidebar
         """)
         return
 
     draft_tool: FantasyDraftTool = st.session_state.draft_tool
+
+    # Add refresh button on the right side of the main content
+    if draft_tool.sleeper_draft_id:
+        col_title, col_refresh = st.columns([0.7, 0.3])
+        with col_title:
+            st.markdown('<div class="app-title">Fantasy Draft Tool</div>', unsafe_allow_html=True)
+            st.markdown('<div class="app-caption">Load FantasyPros rankings and manage multiple fantasy leagues with Sleeper integration.</div>', unsafe_allow_html=True)
+        with col_refresh:
+            if st.button("🔄 Refresh Draft Picks", use_container_width=True):
+                with st.spinner("Refreshing draft picks..."):
+                    draft_tool.fetch_sleeper_draft_picks()
+                st.success("✅ Draft picks refreshed!")
+                st.rerun()
+    else:
+        st.markdown('<div class="app-title">Fantasy Draft Tool</div>', unsafe_allow_html=True)
+        st.markdown('<div class="app-caption">Load FantasyPros rankings and manage multiple fantasy leagues with Sleeper integration.</div>', unsafe_allow_html=True)
 
     render_top_overall(draft_tool)
     st.divider()

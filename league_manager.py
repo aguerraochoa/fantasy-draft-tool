@@ -20,7 +20,15 @@ class League:
     last_used: str
 
 class LeagueManager:
-    def __init__(self, storage_file: str = "saved_leagues.json"):
+    def __init__(self, storage_file: str = None, user_id: str = None):
+        # Generate unique storage file per user to prevent data sharing
+        if storage_file is None:
+            if user_id is None:
+                # Fallback to a unique identifier if no user_id provided
+                import uuid
+                user_id = str(uuid.uuid4())
+            storage_file = f"saved_leagues_{user_id}.json"
+        
         self.storage_file = storage_file
         self.leagues: Dict[str, League] = {}
         self.load_leagues()

@@ -495,7 +495,12 @@ def render_sidebar() -> None:
         # Initialize league manager in session state
         if "league_manager" not in st.session_state:
             from league_manager import LeagueManager
-            st.session_state.league_manager = LeagueManager()
+            # Generate unique user identifier to prevent data sharing
+            if "user_id" not in st.session_state:
+                import uuid
+                st.session_state.user_id = str(uuid.uuid4())
+            
+            st.session_state.league_manager = LeagueManager(user_id=st.session_state.user_id)
         
         league_manager = st.session_state.league_manager
         

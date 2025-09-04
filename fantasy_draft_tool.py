@@ -523,6 +523,11 @@ class FantasyDraftTool:
         if k_files:
             files['K'] = k_files[0]
         
+        # Find ROS (Rest of Season) file
+        ros_files = glob.glob(f"{rankings_dir}/FantasyPros_*_Ros_ALL_Rankings.csv")
+        if ros_files:
+            files['ROS'] = ros_files[0]
+        
         return files
 
     @staticmethod
@@ -542,6 +547,209 @@ class FantasyDraftTool:
                 rankings[position_type] = []
         
         return rankings
+    
+    @staticmethod
+    def load_ros_rankings() -> List[Dict]:
+        """Load Rest of Season rankings from CSV file."""
+        files = FantasyDraftTool.get_weekly_rankings_files()
+        
+        if 'ROS' not in files:
+            return []
+        
+        ros_file = files['ROS']
+        ros_players = []
+        
+        try:
+            with open(ros_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        # Parse ROS CSV format: "RK","PLAYER NAME",TEAM,"POS","SOS SEASON","SOS PLAYOFFS","ECR VS. ADP"
+                        rank = int(row['RK'].strip('"'))
+                        name = row['PLAYER NAME'].strip('"')
+                        team = row['TEAM'].strip('"')
+                        position = row['POS'].strip('"')
+                        
+                        # Extract base position (e.g., "WR" from "WR1")
+                        pos_match = re.match(r'([A-Z]+)', position)
+                        base_position = pos_match.group(1) if pos_match else position
+                        
+                        player = {
+                            'rank': rank,
+                            'name': name,
+                            'team': team,
+                            'position': base_position,
+                            'position_with_rank': position
+                        }
+                        ros_players.append(player)
+                        
+                    except (ValueError, KeyError) as e:
+                        print(f"Error parsing ROS player row: {e}")
+                        continue
+                        
+        except Exception as e:
+            print(f"Error loading ROS rankings from {ros_file}: {e}")
+            return []
+        
+        return ros_players
+    
+    @staticmethod
+    def analyze_ros_recommendations(user_players_list: List[Dict], sleeper_players: Dict[str, dict], 
+                                   all_league_players: List[Dict], ros_rankings: List[Dict]) -> Dict:
+        """Analyze ROS rankings and provide upgrade recommendations."""
+        
+        # Match user's players with ROS rankings
+        user_ros_players = []
+        for user_player in user_players_list:
+            player_id = user_player['player_id']
+            sleeper_player = sleeper_players.get(player_id)
+            
+            if not sleeper_player:
+                continue
+                
+            sleeper_name = sleeper_player.get('full_name', '').strip()
+            sleeper_position = sleeper_player.get('position', '').strip()
+            
+            # Skip DST and K since they're handled elsewhere
+            if sleeper_position in ['DEF', 'K']:
+                continue
+            
+            # Match with ROS rankings using fuzzy matching
+            best_match = None
+            best_score = 0
+            
+            normalized_sleeper_name = FantasyDraftTool._normalize_name(sleeper_name)
+            
+            for ros_player in ros_rankings:
+                if ros_player['position'] != sleeper_position:
+                    continue
+                    
+                normalized_ros_name = FantasyDraftTool._normalize_name(ros_player['name'])
+                score = fuzz.ratio(normalized_sleeper_name, normalized_ros_name)
+                
+                if score >= 95:  # High threshold to avoid mismatches
+                    # Additional validation: check first name similarity
+                    sleeper_first = normalized_sleeper_name.split()[0] if normalized_sleeper_name.split() else ""
+                    ros_first = normalized_ros_name.split()[0] if normalized_ros_name.split() else ""
+                    first_name_score = fuzz.ratio(sleeper_first, ros_first)
+                    
+                    if first_name_score >= 85 and score > best_score:
+                        best_score = score
+                        best_match = ros_player
+            
+            if best_match:
+                user_ros_players.append({
+                    'player_id': player_id,
+                    'name': best_match['name'],
+                    'position': best_match['position'],
+                    'position_with_rank': best_match['position_with_rank'],
+                    'team': best_match['team'],
+                    'rank': best_match['rank']
+                })
+        
+        # Get all players owned by other teams (to exclude from free agents)
+        owned_player_ids = set()
+        for roster_player in all_league_players:
+            owned_player_ids.add(roster_player['player_id'])
+        
+        # Find free agents (players not owned by any team) with ROS rankings
+        free_agents = []
+        for ros_player in ros_rankings:
+            # Skip DST and K
+            if ros_player['position'] in ['DEF', 'K']:
+                continue
+                
+            # Find sleeper player ID for this ROS player
+            found_sleeper_id = None
+            normalized_ros_name = FantasyDraftTool._normalize_name(ros_player['name'])
+            
+            for sleeper_id, sleeper_player in sleeper_players.items():
+                if sleeper_player.get('position') != ros_player['position']:
+                    continue
+                    
+                sleeper_name = sleeper_player.get('full_name', '').strip()
+                normalized_sleeper_name = FantasyDraftTool._normalize_name(sleeper_name)
+                
+                score = fuzz.ratio(normalized_sleeper_name, normalized_ros_name)
+                if score >= 95:
+                    # Additional validation: check first name similarity
+                    sleeper_first = normalized_sleeper_name.split()[0] if normalized_sleeper_name.split() else ""
+                    ros_first = normalized_ros_name.split()[0] if normalized_ros_name.split() else ""
+                    first_name_score = fuzz.ratio(sleeper_first, ros_first)
+                    
+                    if first_name_score >= 85:
+                        found_sleeper_id = sleeper_id
+                        break
+            
+            # If player found and not owned by any team, add to free agents
+            if found_sleeper_id and found_sleeper_id not in owned_player_ids:
+                free_agents.append({
+                    'player_id': found_sleeper_id,
+                    'name': ros_player['name'],
+                    'position': ros_player['position'],
+                    'position_with_rank': ros_player['position_with_rank'],
+                    'team': ros_player['team'],
+                    'rank': ros_player['rank']
+                })
+        
+        # Sort by rank (lower is better)
+        user_ros_players.sort(key=lambda x: x['rank'])
+        free_agents.sort(key=lambda x: x['rank'])
+        
+        # Position-specific recommendations
+        position_recommendations = {}
+        positions = ['QB', 'RB', 'WR', 'TE']
+        
+        for position in positions:
+            user_position_players = [p for p in user_ros_players if p['position'] == position]
+            free_agent_position_players = [p for p in free_agents if p['position'] == position]
+            
+            recommendations = []
+            
+            if user_position_players and free_agent_position_players:
+                # Find worst user player and best free agent at this position
+                worst_user_player = max(user_position_players, key=lambda x: x['rank'])
+                best_free_agent = min(free_agent_position_players, key=lambda x: x['rank'])
+                
+                # Only recommend if free agent is better ranked
+                if best_free_agent['rank'] < worst_user_player['rank']:
+                    recommendations.append({
+                        'drop': worst_user_player,
+                        'add': best_free_agent,
+                        'improvement': worst_user_player['rank'] - best_free_agent['rank']
+                    })
+            
+            position_recommendations[position] = recommendations
+        
+        # Best value recommendations (ignore positions) - only show beneficial swaps
+        best_adds = []
+        worst_drops = []
+        
+        if user_ros_players and free_agents:
+            # Sort both lists by rank
+            sorted_free_agents = sorted(free_agents, key=lambda x: x['rank'])
+            sorted_user_players = sorted(user_ros_players, key=lambda x: x['rank'], reverse=True)
+            
+            # Find beneficial swaps: free agents better than user's worst players
+            for i in range(min(len(sorted_free_agents), len(sorted_user_players))):
+                free_agent = sorted_free_agents[i]
+                user_player = sorted_user_players[i]
+                
+                # Only add if free agent is actually better (lower rank number)
+                if free_agent['rank'] < user_player['rank']:
+                    best_adds.append(free_agent)
+                    worst_drops.append(user_player)
+                else:
+                    # Stop when we can't find more beneficial swaps
+                    break
+        
+        return {
+            'user_players': user_ros_players,
+            'free_agents': free_agents,
+            'position_recommendations': position_recommendations,
+            'best_adds': best_adds,
+            'worst_drops': worst_drops
+        }
 
     @staticmethod
     def fetch_league_rosters(league_id: str) -> List[dict]:

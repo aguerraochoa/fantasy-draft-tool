@@ -668,7 +668,7 @@ def render_weekly_rankings_sidebar() -> None:
         if "weekly_discovered_leagues" in st.session_state and st.session_state.weekly_discovered_leagues:
             st.markdown("**Your Leagues (click to analyze):**")
             for league_name, league_id in st.session_state.weekly_discovered_leagues:
-                if st.button(f"📊 {league_name}", key=f"weekly_league_{league_id}", use_container_width=True):
+                if st.button(f"🏈 {league_name}", key=f"weekly_league_{league_id}", use_container_width=True):
                     st.session_state.selected_weekly_league = (league_name, league_id)
                     st.rerun()
 
@@ -760,19 +760,25 @@ def render_weekly_rankings_content() -> None:
             # Starting Lineup
             if analysis['starters']:
                 st.markdown("**✅ RECOMMENDED STARTING LINEUP:**")
-                for i, player in enumerate(analysis['starters'], 1):
+                for player in analysis['starters']:
                     position_display = player.get('position_with_rank', player['position'])
                     waiver_indicator = " (Free Agent)" if player.get('is_waiver_wire', False) else ""
-                    st.write(f"{i}. **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**{waiver_indicator}")
+                    
+                    # Determine the roster slot label
+                    roster_slot = player.get('flex_slot', player['position'])
+                    if roster_slot in ['SUPER_FLEX', 'FLEX', 'WRRBTE_FLEX', 'WRRB_FLEX']:
+                        roster_slot = 'FLEX'
+                    
+                    st.write(f"**{roster_slot}** **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**{waiver_indicator}")
             else:
                 st.warning("No starting lineup recommendations available.")
             
             # Bench Players
             if analysis['bench']:
                 st.markdown("**🪑 BENCH PLAYERS:**")
-                for i, player in enumerate(analysis['bench'], 1):
+                for player in analysis['bench']:
                     position_display = player.get('position_with_rank', player['position'])
-                    st.write(f"{i}. **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**")
+                    st.write(f"**BN** **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**")
             else:
                 st.info("No bench players.")
             
@@ -819,8 +825,77 @@ def render_weekly_rankings_content() -> None:
                             st.write(f"{i}. **{kicker['name']}** ({kicker['team']}) - **Rank #{kicker['rank']}** ({status})")
                     else:
                         st.info("No kicker suggestions available.")
+        
+        # ROS Upgrade Recommendations Section
+        st.markdown("---")  # Separator line
+        st.markdown("#### 🔄 ROS Upgrade Recommendations")
+        
+        # Load and analyze ROS rankings
+        with st.spinner("Analyzing ROS upgrade opportunities..."):
+            ros_rankings = FantasyDraftTool.load_ros_rankings()
+        
+        if ros_rankings:
+            ros_analysis = FantasyDraftTool.analyze_ros_recommendations(
+                user_players_list, sleeper_players, all_league_players, ros_rankings
+            )
+            
+            # Create horizontal split for ROS recommendations
+            ros_col1, ros_col2 = st.columns([1, 1])  # Equal width columns
+            
+            with ros_col1:
+                st.markdown("**📍 Position-Specific Upgrades**")
+                
+                positions = ['QB', 'RB', 'WR', 'TE']
+                position_emojis = {'QB': '🎯', 'RB': '🏈', 'WR': '⚡', 'TE': '🎪'}
+                
+                for position in positions:
+                    recommendations = ros_analysis['position_recommendations'].get(position, [])
+                    
+                    st.markdown(f"**{position_emojis.get(position, '🏈')} {position}S**")
+                    
+                    if recommendations:
+                        for rec in recommendations:
+                            drop_player = rec['drop']
+                            add_player = rec['add']
+                            improvement = rec['improvement']
+                            
+                            st.write(f"Drop: **{drop_player['name']}** ({drop_player['position_with_rank']}) - Rank #{drop_player['rank']}")
+                            st.write(f"Add: **{add_player['name']}** ({add_player['position_with_rank']}) - Rank #{add_player['rank']}")
+                            st.success(f"⬆️ Improvement: +{improvement} ranks")
+                            st.write("")  # Spacing
+                    else:
+                        st.info("No upgrades available")
+                        st.write("")  # Spacing
+            
+            with ros_col2:
+                st.markdown("**📈 Best Available Players**")
+                
+                # Worst drops section first
+                st.markdown("**➖ DROP (Worst on Roster)**")
+                if ros_analysis['worst_drops']:
+                    # Sort by rank (best ranks first)
+                    sorted_drops = sorted(ros_analysis['worst_drops'], key=lambda x: x['rank'])
+                    for player in sorted_drops[:8]:  # Top 8
+                        st.write(f"**{player['position']}** Rank #{player['rank']} - {player['name']} ({player['team']})")
+                else:
+                    st.info("No players to drop")
+                
+                st.write("")  # Spacing
+                
+                # Best adds section
+                st.markdown("**➕ ADD (Best Available)**")
+                if ros_analysis['best_adds']:
+                    # Sort by rank (best ranks first)
+                    sorted_adds = sorted(ros_analysis['best_adds'], key=lambda x: x['rank'])
+                    for player in sorted_adds[:8]:  # Top 8
+                        st.write(f"**{player['position']}** Rank #{player['rank']} - {player['name']} ({player['team']})")
+                else:
+                    st.info("No free agents found")
+        else:
+            st.info("📁 No ROS rankings file found. Add FantasyPros_*_Ros_ALL_Rankings.csv to the weekly_rankings folder.")
+    
     else:
-        st.info("👆 Use the sidebar to discover your leagues and select one to analyze.")
+        st.info("👈 Use the sidebar to discover your leagues and select one to analyze.")
 
 
 def render_draft_assistant_page() -> None:
@@ -828,7 +903,7 @@ def render_draft_assistant_page() -> None:
     render_sidebar()
 
     if not st.session_state.draft_tool:
-        st.info("Use the sidebar to load FantasyPros rankings")
+        st.info("👈 Use the sidebar to load FantasyPros rankings")
         st.markdown("""
         ### Quick Start Options:
         

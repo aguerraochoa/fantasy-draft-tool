@@ -359,11 +359,24 @@ class FantasyDraftTool:
                 scorer=fuzz.token_sort_ratio,
             )
 
-            if best_match and best_match[1] >= 88:
+            if best_match and best_match[1] >= 95:
                 chosen_key = best_match[0]
-                fantasypros_player.sleeper_id = candidates_map[chosen_key]
-                matched_count += 1
-                continue
+                
+                # Additional validation: check for common name confusions
+                fp_normalized = self._normalize_name(fantasypros_player.name).lower()
+                sleeper_normalized = chosen_key.lower()
+                
+                # Reject matches if first names are completely different
+                fp_first = fp_normalized.split()[0] if fp_normalized.split() else ""
+                sleeper_first = sleeper_normalized.split()[0] if sleeper_normalized.split() else ""
+                
+                # Only proceed if first names are very similar or identical
+                if len(fp_first) > 0 and len(sleeper_first) > 0:
+                    first_name_similarity = fuzz.ratio(fp_first, sleeper_first)
+                    if first_name_similarity >= 85:  # First names must be very similar
+                        fantasypros_player.sleeper_id = candidates_map[chosen_key]
+                        matched_count += 1
+                        continue
 
             # Fallback: try last-name + team + position heuristic (handles nicknames like "Hollywood Brown")
             try:
@@ -656,22 +669,35 @@ class FantasyDraftTool:
                             scorer=fuzz.token_sort_ratio,
                         )
                         
-                        if best_match and best_match[1] >= 88:  # High confidence threshold
+                        if best_match and best_match[1] >= 95:  # Very high confidence threshold
                             matched_name = best_match[0]
-                            # Find the corresponding player_id
-                            for name, player_id in roster_candidates:
-                                if name == matched_name:
-                                    sleeper_player = sleeper_players.get(player_id)
-                                    user_offensive_players.append({
-                                        'name': player_name,
-                                        'position': base_position,
-                                        'position_with_rank': position_with_rank,
-                                        'rank': rank_idx + 1,
-                                        'team': sleeper_player.get('team', ''),
-                                        'sleeper_id': player_id,
-                                        'is_on_roster': True
-                                    })
-                                    break
+                            
+                            # Additional validation: check for common name confusions
+                            fp_normalized = FantasyDraftTool._normalize_name(player_name).lower()
+                            sleeper_normalized = FantasyDraftTool._normalize_name(matched_name).lower()
+                            
+                            # Reject matches if first names are completely different
+                            fp_first = fp_normalized.split()[0] if fp_normalized.split() else ""
+                            sleeper_first = sleeper_normalized.split()[0] if sleeper_normalized.split() else ""
+                            
+                            # Only proceed if first names are very similar or identical
+                            if len(fp_first) > 0 and len(sleeper_first) > 0:
+                                first_name_similarity = fuzz.ratio(fp_first, sleeper_first)
+                                if first_name_similarity >= 85:  # First names must be very similar
+                                    # Find the corresponding player_id
+                                    for name, player_id in roster_candidates:
+                                        if name == matched_name:
+                                            sleeper_player = sleeper_players.get(player_id)
+                                            user_offensive_players.append({
+                                                'name': player_name,
+                                                'position': base_position,
+                                                'position_with_rank': position_with_rank,
+                                                'rank': rank_idx + 1,
+                                                'team': sleeper_player.get('team', ''),
+                                                'sleeper_id': player_id,
+                                                'is_on_roster': True
+                                            })
+                                            break
         
         # Sort by rank (ascending - lower rank number is better)
         user_offensive_players.sort(key=lambda x: x['rank'])
@@ -839,8 +865,9 @@ class FantasyDraftTool:
             'WR': roster_settings.get('WR', 0),
             'TE': roster_settings.get('TE', 0),
             'WRRB_FLEX': roster_settings.get('WRRB_FLEX', 0),
-            'WRRBTE_FLEX': roster_settings.get('WRRBTE_FLEX', 0),
-            'SUPER_FLEX': roster_settings.get('SUPER_FLEX', 0)
+            'FLEX': roster_settings.get('FLEX', 0),  # RB, WR, or TE
+            'WRRBTE_FLEX': roster_settings.get('WRRBTE_FLEX', 0),  # RB, WR, or TE (same as FLEX)
+            'SUPER_FLEX': roster_settings.get('SUPER_FLEX', 0)  # QB, RB, WR, or TE
         }
         
         # Track how many of each position we've used
@@ -856,92 +883,110 @@ class FantasyDraftTool:
                 bench.append(player)
         
         # Second pass: Fill flex positions
-        flex_players = [p for p in bench if p['position'] in ['RB', 'WR', 'TE']]
-        flex_players.sort(key=lambda x: x['rank'])  # Sort by rank for flex decisions
+        # Create lists of eligible players for each flex type
+        all_flex_players = [p for p in bench if p['position'] in ['QB', 'RB', 'WR', 'TE']]
+        wrrbte_flex_players = [p for p in bench if p['position'] in ['RB', 'WR', 'TE']]
+        wrrb_flex_players = [p for p in bench if p['position'] in ['RB', 'WR']]
         
-        # Fill WRRBTE_FLEX (can use RB, WR, or TE)
-        wrrbte_flex_needed = position_requirements.get('WRRBTE_FLEX', 0)
-        for _ in range(wrrbte_flex_needed):
-            if flex_players:
-                best_flex = flex_players.pop(0)
-                starters.append(best_flex)
-                bench.remove(best_flex)
+        # Sort all lists by rank (ascending - lower rank is better)
+        all_flex_players.sort(key=lambda x: x['rank'])
+        wrrbte_flex_players.sort(key=lambda x: x['rank'])
+        wrrb_flex_players.sort(key=lambda x: x['rank'])
         
-        # Fill WRRB_FLEX (can use RB or WR)
-        wrrb_flex_needed = position_requirements.get('WRRB_FLEX', 0)
-        for _ in range(wrrb_flex_needed):
-            eligible_players = [p for p in flex_players if p['position'] in ['RB', 'WR']]
-            if eligible_players:
-                best_flex = eligible_players[0]
-                starters.append(best_flex)
-                bench.remove(best_flex)
-                flex_players.remove(best_flex)
-        
-        # Fill SUPER_FLEX (can use QB, RB, WR, or TE)
+        # Fill SUPER_FLEX (can use QB, RB, WR, or TE) - highest priority
         super_flex_needed = position_requirements.get('SUPER_FLEX', 0)
         for _ in range(super_flex_needed):
-            if flex_players:
-                best_flex = flex_players.pop(0)
+            if all_flex_players:
+                best_flex = all_flex_players.pop(0)
+                best_flex['flex_slot'] = 'SUPER_FLEX'  # Track which flex slot this player fills
+                starters.append(best_flex)
+                bench.remove(best_flex)
+                # Remove from other flex lists if present
+                if best_flex in wrrbte_flex_players:
+                    wrrbte_flex_players.remove(best_flex)
+                if best_flex in wrrb_flex_players:
+                    wrrb_flex_players.remove(best_flex)
+        
+        # Fill FLEX (can use RB, WR, or TE)
+        flex_needed = position_requirements.get('FLEX', 0)
+        for _ in range(flex_needed):
+            if wrrbte_flex_players:
+                best_flex = wrrbte_flex_players.pop(0)
+                best_flex['flex_slot'] = 'FLEX'  # Track which flex slot this player fills
+                starters.append(best_flex)
+                bench.remove(best_flex)
+                # Remove from WRRB_FLEX list if present
+                if best_flex in wrrb_flex_players:
+                    wrrb_flex_players.remove(best_flex)
+        
+        # Fill WRRBTE_FLEX (can use RB, WR, or TE) - same as FLEX
+        wrrbte_flex_needed = position_requirements.get('WRRBTE_FLEX', 0)
+        for _ in range(wrrbte_flex_needed):
+            if wrrbte_flex_players:
+                best_flex = wrrbte_flex_players.pop(0)
+                best_flex['flex_slot'] = 'WRRBTE_FLEX'  # Track which flex slot this player fills
+                starters.append(best_flex)
+                bench.remove(best_flex)
+                # Remove from WRRB_FLEX list if present
+                if best_flex in wrrb_flex_players:
+                    wrrb_flex_players.remove(best_flex)
+        
+        # Fill WRRB_FLEX (can use RB or WR only)
+        wrrb_flex_needed = position_requirements.get('WRRB_FLEX', 0)
+        for _ in range(wrrb_flex_needed):
+            if wrrb_flex_players:
+                best_flex = wrrb_flex_players.pop(0)
+                best_flex['flex_slot'] = 'WRRB_FLEX'  # Track which flex slot this player fills
                 starters.append(best_flex)
                 bench.remove(best_flex)
         
         # Sort starters by roster requirements order and rank within position
-        position_order = ['QB', 'RB', 'WR', 'TE', 'WRRB_FLEX', 'WRRBTE_FLEX', 'SUPER_FLEX']
         sorted_starters = []
         
-        # Group starters by position
+        # Create the position order based on roster_settings order and counts
+        position_order = []
+        
+        # Add positions in the order they appear in roster_settings with their counts
+        for pos, count in roster_settings.items():
+            if count > 0 and pos in ['QB', 'RB', 'WR', 'TE', 'SUPER_FLEX', 'FLEX', 'WRRBTE_FLEX', 'WRRB_FLEX']:
+                for _ in range(count):
+                    position_order.append(pos)
+        
+        # Group starters by their assigned position slot
+        # For flex players, use their flex_slot, for others use their position
         starters_by_pos = {}
         for starter in starters:
-            pos = starter['position']
+            # Use flex_slot if it exists (for flex players), otherwise use position
+            pos = starter.get('flex_slot', starter['position'])
             if pos not in starters_by_pos:
                 starters_by_pos[pos] = []
             starters_by_pos[pos].append(starter)
+        
+        # Debug: print what we have
+        print(f"Starters by position: {list(starters_by_pos.keys())}")
+        print(f"Position order from roster settings: {position_order}")
+        for pos, players in starters_by_pos.items():
+            print(f"{pos}: {[p['name'] for p in players]}")
         
         # Sort each position group by rank (ascending - lower rank is better)
         for pos in starters_by_pos:
             starters_by_pos[pos].sort(key=lambda x: x['rank'])
         
-        # Add starters in roster order
+        # Add starters following the roster requirements order
+        position_counts = {}
         for pos in position_order:
-            if pos in starters_by_pos:
-                sorted_starters.extend(starters_by_pos[pos])
+            if pos not in position_counts:
+                position_counts[pos] = 0
+            
+            if pos in starters_by_pos and position_counts[pos] < len(starters_by_pos[pos]):
+                sorted_starters.append(starters_by_pos[pos][position_counts[pos]])
+                position_counts[pos] += 1
         
         # Add DST and K to starting lineup - always use best available (waiver wire or roster)
         dst_needed = roster_settings.get('DEF', 0)
         k_needed = roster_settings.get('K', 0)
         
-        # Add DST to lineup - prioritize best available from all sources
-        if dst_needed > 0:
-            best_dst = None
-            is_waiver_wire = False
-            
-            # Check if best waiver wire DST is better than best roster DST
-            if analysis['waiver_suggestions']['defenses']:
-                best_waiver_dst = analysis['waiver_suggestions']['defenses'][0]
-                if analysis['defenses']:
-                    best_roster_dst = analysis['defenses'][0]
-                    # Use waiver wire DST if it has better rank (lower number)
-                    if best_waiver_dst['rank'] < best_roster_dst['rank']:
-                        best_dst = best_waiver_dst
-                        is_waiver_wire = True
-                    else:
-                        best_dst = best_roster_dst
-                else:
-                    # No roster DST, use waiver wire
-                    best_dst = best_waiver_dst
-                    is_waiver_wire = True
-            elif analysis['defenses']:
-                # Only roster DST available
-                best_dst = analysis['defenses'][0]
-            
-            if best_dst:
-                best_dst = best_dst.copy()  # Don't modify original
-                best_dst['position'] = 'DEF'
-                if is_waiver_wire:
-                    best_dst['is_waiver_wire'] = True
-                sorted_starters.append(best_dst)
-        
-        # Add K to lineup - prioritize best available from all sources
+        # Add K to lineup first - prioritize best available from all sources
         if k_needed > 0:
             best_k = None
             is_waiver_wire = False
@@ -971,6 +1016,37 @@ class FantasyDraftTool:
                 if is_waiver_wire:
                     best_k['is_waiver_wire'] = True
                 sorted_starters.append(best_k)
+        
+        # Add DST to lineup after kicker - prioritize best available from all sources
+        if dst_needed > 0:
+            best_dst = None
+            is_waiver_wire = False
+            
+            # Check if best waiver wire DST is better than best roster DST
+            if analysis['waiver_suggestions']['defenses']:
+                best_waiver_dst = analysis['waiver_suggestions']['defenses'][0]
+                if analysis['defenses']:
+                    best_roster_dst = analysis['defenses'][0]
+                    # Use waiver wire DST if it has better rank (lower number)
+                    if best_waiver_dst['rank'] < best_roster_dst['rank']:
+                        best_dst = best_waiver_dst
+                        is_waiver_wire = True
+                    else:
+                        best_dst = best_roster_dst
+                else:
+                    # No roster DST, use waiver wire
+                    best_dst = best_waiver_dst
+                    is_waiver_wire = True
+            elif analysis['defenses']:
+                # Only roster DST available
+                best_dst = analysis['defenses'][0]
+            
+            if best_dst:
+                best_dst = best_dst.copy()  # Don't modify original
+                best_dst['position'] = 'DEF'
+                if is_waiver_wire:
+                    best_dst['is_waiver_wire'] = True
+                sorted_starters.append(best_dst)
         
         analysis['starters'] = sorted_starters
         analysis['bench'] = bench

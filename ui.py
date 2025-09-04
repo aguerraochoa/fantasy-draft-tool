@@ -753,57 +753,72 @@ def render_weekly_rankings_content() -> None:
         # Show Start/Sit Recommendations
         st.markdown("#### 🎯 Start/Sit Recommendations")
         
-        # Starting Lineup
-        if analysis['starters']:
-            st.markdown("**✅ RECOMMENDED STARTING LINEUP:**")
-            for i, player in enumerate(analysis['starters'], 1):
-                position_display = player.get('position_with_rank', player['position'])
-                waiver_indicator = " (Free Agent))" if player.get('is_waiver_wire', False) else ""
-                st.write(f"{i}. **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**{waiver_indicator}")
-        else:
-            st.warning("No starting lineup recommendations available.")
+        # Create horizontal split layout
+        col1, col2 = st.columns([2, 1])  # Left column wider than right
         
-        # Bench Players
-        if analysis['bench']:
-            st.markdown("**🪑 BENCH PLAYERS:**")
-            for i, player in enumerate(analysis['bench'], 1):
-                position_display = player.get('position_with_rank', player['position'])
-                st.write(f"{i}. **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**")
-        else:
-            st.info("No bench players.")
+        with col1:
+            # Starting Lineup
+            if analysis['starters']:
+                st.markdown("**✅ RECOMMENDED STARTING LINEUP:**")
+                for i, player in enumerate(analysis['starters'], 1):
+                    position_display = player.get('position_with_rank', player['position'])
+                    waiver_indicator = " (Free Agent)" if player.get('is_waiver_wire', False) else ""
+                    st.write(f"{i}. **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**{waiver_indicator}")
+            else:
+                st.warning("No starting lineup recommendations available.")
+            
+            # Bench Players
+            if analysis['bench']:
+                st.markdown("**🪑 BENCH PLAYERS:**")
+                for i, player in enumerate(analysis['bench'], 1):
+                    position_display = player.get('position_with_rank', player['position'])
+                    st.write(f"{i}. **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**")
+            else:
+                st.info("No bench players.")
+            
+            # Check if defenses and kickers are required in this league
+            dst_required = roster_settings.get('DEF', 0) > 0
+            k_required = roster_settings.get('K', 0) > 0
+            
+            # Defenses (if not in starting lineup and position is required)
+            if dst_required and analysis['defenses'] and len(analysis['defenses']) > 1:
+                st.markdown("**🛡️ OTHER DEFENSES ON ROSTER:**")
+                for i, defense in enumerate(analysis['defenses'][1:], 1):  # Skip first one (already in lineup)
+                    st.write(f"{i}. **{defense['name']}** - **Rank #{defense['rank']}**")
+            
+            # Kickers (if not in starting lineup and position is required)
+            if k_required and analysis['kickers'] and len(analysis['kickers']) > 1:
+                st.markdown("**🦵 OTHER KICKERS ON ROSTER:**")
+                for i, kicker in enumerate(analysis['kickers'][1:], 1):  # Skip first one (already in lineup)
+                    st.write(f"{i}. **{kicker['name']}** ({kicker['team']}) - **Rank #{kicker['rank']}**")
         
-        # Defenses (if not in starting lineup)
-        if analysis['defenses'] and len(analysis['defenses']) > 1:
-            st.markdown("**🛡️ OTHER DEFENSES ON ROSTER:**")
-            for i, defense in enumerate(analysis['defenses'][1:], 1):  # Skip first one (already in lineup)
-                st.write(f"{i}. **{defense['name']}** - **Rank #{defense['rank']}**")
-        
-        # Kickers (if not in starting lineup)
-        if analysis['kickers'] and len(analysis['kickers']) > 1:
-            st.markdown("**🦵 OTHER KICKERS ON ROSTER:**")
-            for i, kicker in enumerate(analysis['kickers'][1:], 1):  # Skip first one (already in lineup)
-                st.write(f"{i}. **{kicker['name']}** ({kicker['team']}) - **Rank #{kicker['rank']}**")
-        
-        # Waiver Wire Suggestions
-        st.markdown("#### 💡 Waiver Wire Suggestions")
-        
-        # Defense suggestions
-        if analysis['waiver_suggestions']['defenses']:
-            st.markdown("**Top 5 Defenses:**")
-            for i, defense in enumerate(analysis['waiver_suggestions']['defenses'][:5], 1):
-                status = "On Your Roster" if defense.get('is_on_roster', False) else "Free Agent"
-                st.write(f"{i}. **{defense['name']}** - **Rank #{defense['rank']}** ({status})")
-        else:
-            st.info("No defense suggestions available.")
-        
-        # Kicker suggestions
-        if analysis['waiver_suggestions']['kickers']:
-            st.markdown("**Top 5 Kickers:**")
-            for i, kicker in enumerate(analysis['waiver_suggestions']['kickers'][:5], 1):
-                status = "On Your Roster" if kicker.get('is_on_roster', False) else "Free Agent"
-                st.write(f"{i}. **{kicker['name']}** ({kicker['team']}) - **Rank #{kicker['rank']}** ({status})")
-        else:
-            st.info("No kicker suggestions available.")
+        with col2:
+            # Waiver Wire Suggestions - only show if the positions are required in the league
+            dst_required = roster_settings.get('DEF', 0) > 0
+            k_required = roster_settings.get('K', 0) > 0
+            
+            if dst_required or k_required:
+                st.markdown("**💡 Waiver Wire Suggestions**")
+                
+                # Defense suggestions - only if required
+                if dst_required:
+                    if analysis['waiver_suggestions']['defenses']:
+                        st.markdown("**Top 5 Defenses:**")
+                        for i, defense in enumerate(analysis['waiver_suggestions']['defenses'][:5], 1):
+                            status = "On Your Roster" if defense.get('is_on_roster', False) else "Free Agent"
+                            st.write(f"{i}. **{defense['name']}** - **Rank #{defense['rank']}** ({status})")
+                    else:
+                        st.info("No defense suggestions available.")
+                
+                # Kicker suggestions - only if required
+                if k_required:
+                    if analysis['waiver_suggestions']['kickers']:
+                        st.markdown("**Top 5 Kickers:**")
+                        for i, kicker in enumerate(analysis['waiver_suggestions']['kickers'][:5], 1):
+                            status = "On Your Roster" if kicker.get('is_on_roster', False) else "Free Agent"
+                            st.write(f"{i}. **{kicker['name']}** ({kicker['team']}) - **Rank #{kicker['rank']}** ({status})")
+                    else:
+                        st.info("No kicker suggestions available.")
     else:
         st.info("👆 Use the sidebar to discover your leagues and select one to analyze.")
 

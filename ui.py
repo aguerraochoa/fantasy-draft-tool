@@ -65,6 +65,12 @@ def inject_css() -> None:
             color: #ffffff !important;
             border: 1px solid #334155 !important;
         }
+        /* Number input (Season year) */
+        .stNumberInput input, [data-testid="stNumberInput"] input, input[type="number"] {
+            background: #111827 !important;
+            color: #ffffff !important;
+            border: 1px solid #334155 !important;
+        }
         .stTextInput input::placeholder, .stTextArea textarea::placeholder {
             color: #ffffff !important;
             opacity: 0.85;
@@ -424,213 +430,98 @@ def render_sidebar() -> None:
         if st.button("📊 Standard", use_container_width=True):
             try:
                 with st.spinner("Loading Standard rankings..."):
-                    # Use scraper to get Standard rankings
                     from fantasy_rankings_scraper import scrape
                     scraper = scrape('fantasypros.com')
-                    standard_players = scraper.data[1]  # Standard format
-                    
-                    # Create draft tool and load data
+                    standard_players = scraper.data[1]
                     draft_tool = FantasyDraftTool("")
                     draft_tool.load_scraped_data(standard_players, "Standard")
-                    
-                    # Fetch and match Sleeper data
                     draft_tool.fetch_sleeper_data()
                     draft_tool.match_players()
-                    
                     st.session_state.draft_tool = draft_tool
                     st.success(f"✅ Loaded {len(draft_tool.players)} Standard players successfully!")
-                    
             except Exception as ex:
                 st.error(f"❌ Error loading Standard rankings: {ex}")
         
         if st.button("📈 Half-PPR", use_container_width=True):
             try:
                 with st.spinner("Loading Half-PPR rankings..."):
-                    # Use scraper to get Half-PPR rankings
                     from fantasy_rankings_scraper import scrape
                     scraper = scrape('fantasypros.com')
-                    half_ppr_players = scraper.data[2]  # Half-PPR format
-                    
-                    # Create draft tool and load data
+                    half_ppr_players = scraper.data[2]
                     draft_tool = FantasyDraftTool("")
                     draft_tool.load_scraped_data(half_ppr_players, "Half-PPR")
-                    
-                    # Fetch and match Sleeper data
                     draft_tool.fetch_sleeper_data()
                     draft_tool.match_players()
-                    
                     st.session_state.draft_tool = draft_tool
                     st.success(f"✅ Loaded {len(draft_tool.players)} Half-PPR players successfully!")
-                    
             except Exception as ex:
                 st.error(f"❌ Error loading Half-PPR rankings: {ex}")
         
         if st.button("🏈 PPR", use_container_width=True):
             try:
                 with st.spinner("Loading PPR rankings..."):
-                    # Use scraper to get PPR rankings
                     from fantasy_rankings_scraper import scrape
                     scraper = scrape('fantasypros.com')
-                    ppr_players = scraper.data[3]  # PPR format
-                    
-                    # Create draft tool and load data
+                    ppr_players = scraper.data[3]
                     draft_tool = FantasyDraftTool("")
                     draft_tool.load_scraped_data(ppr_players, "PPR")
-                    
-                    # Fetch and match Sleeper data
                     draft_tool.fetch_sleeper_data()
                     draft_tool.match_players()
-                    
                     st.session_state.draft_tool = draft_tool
                     st.success(f"✅ Loaded {len(draft_tool.players)} PPR players successfully!")
-                    
             except Exception as ex:
                 st.error(f"❌ Error loading PPR rankings: {ex}")
 
         st.divider()
 
-        # League Management Section
-        st.subheader("🏈 League Management")
+        # New: Username-based discovery for leagues and drafts
+        st.subheader("🏈 Sleeper: Discover Leagues & Drafts")
+        username = st.text_input("Sleeper username", placeholder="your_username")
+        season_year = FantasyDraftTool.get_current_season_year()
+        st.caption(f"Using current season: {season_year}")
         
-        # Initialize league manager in session state
-        if "league_manager" not in st.session_state:
-            from league_manager import LeagueManager
-            # Generate unique user identifier to prevent data sharing
-            if "user_id" not in st.session_state:
-                import uuid
-                st.session_state.user_id = str(uuid.uuid4())
-            
-            st.session_state.league_manager = LeagueManager(user_id=st.session_state.user_id)
-        
-        league_manager = st.session_state.league_manager
-        
-        # Saved Leagues Section
-        if league_manager.get_league_count() > 0:
-            st.markdown("**Saved Leagues:**")
-            
-            # Get league names in original order (not sorted by last used)
-            league_names = league_manager.get_all_leagues()
-            
-            # Display each league as a button
-            for league_name in league_names:
-                league = league_manager.get_league(league_name)
-                if league:
-                    # Check if this league is currently connected
-                    is_connected = (st.session_state.draft_tool and 
-                                  st.session_state.draft_tool.sleeper_draft_id == league.draft_id)
-                    
-                    # Create button with different styling based on connection status
-                    if is_connected:
-                        # Connected league - show as active
-                        if st.button(f"🏈 {league_name} (Connected)", use_container_width=True, 
-                                   key=f"league_{league_name}"):
-                            # Already connected, just refresh
-                            st.rerun()
+        if st.button("🔎 Find my leagues", use_container_width=True, disabled=not bool(username.strip())):
+            with st.spinner("Fetching leagues and drafts..."):
+                user_id = FantasyDraftTool.fetch_user_id_by_username(username.strip())
+                if not user_id:
+                    st.error("❌ Could not resolve user_id from username.")
+                else:
+                    leagues = FantasyDraftTool.fetch_user_leagues(user_id, int(season_year))
+                    if not leagues:
+                        st.warning("No leagues found for this season.")
                     else:
-                        # Not connected - show as clickable
-                        if st.button(f"🏈 {league_name}", use_container_width=True, 
-                                   key=f"league_{league_name}"):
+                        league_options = []
+                        league_id_to_drafts: Dict[str, List[dict]] = {}
+                        for lg in leagues:
+                            league_id = lg.get("league_id")
+                            league_name = lg.get("name") or f"League {league_id}"
+                            league_options.append((league_name, league_id))
+                            drafts = FantasyDraftTool.fetch_league_drafts(league_id)
+                            league_id_to_drafts[league_id] = drafts
+                        # Persist to session for subsequent interactions
+                        st.session_state.username = username.strip()
+                        st.session_state.user_id = user_id
+                        st.session_state.discovered_leagues = league_options
+                        st.session_state.discovered_drafts = league_id_to_drafts
+                        st.success(f"✅ Found {len(league_options)} leagues.")
+
+        # Show discovered leagues and drafts as connect buttons
+        if "discovered_leagues" in st.session_state and st.session_state.discovered_leagues:
+            st.markdown("**Your Leagues (click a draft to connect):**")
+            for league_name, league_id in st.session_state.discovered_leagues:
+                drafts = (st.session_state.discovered_drafts or {}).get(league_id, [])
+                if not drafts:
+                    st.caption("No drafts found for this league.")
+                else:
+                    for d in drafts:
+                        draft_id = d.get("draft_id") or d.get("draft_id".upper())
+                        if st.button(f"🏈 {league_name}", key=f"connect_{draft_id}", use_container_width=True):
                             if st.session_state.draft_tool:
-                                st.session_state.draft_tool.set_sleeper_draft_id(league.draft_id)
-                                league_manager.mark_league_used(league_name)
-                                st.success(f"✅ Connected to {league_name}!")
+                                st.session_state.draft_tool.set_sleeper_draft_id(str(draft_id))
+                                st.success(f"✅ Connected to {league_name}")
                                 st.rerun()
                             else:
                                 st.warning("⚠️ Load rankings first.")
-                    
-                    # Add delete button below each league button
-                    if st.button(f"🗑️ Delete {league_name}", use_container_width=True, key=f"delete_{league_name}"):
-                        if league_manager.delete_league(league_name):
-                            st.success(f"✅ Deleted {league_name}")
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to delete league")
-                    
-                    # Smaller separator between leagues
-                    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-        
-        # Add New League Section
-        with st.expander("➕ Add New League", expanded=False):
-            with st.form("add_league_form"):
-                new_league_name = st.text_input(
-                    "League Name", 
-                    placeholder="e.g., My Main League, Work League, etc.",
-                    key="new_league_name"
-                )
-                
-                new_draft_url = st.text_input(
-                    "Sleeper Draft URL", 
-                    placeholder="https://sleeper.app/draft/1234567890",
-                    key="new_draft_url"
-                )
-                
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    if st.form_submit_button("Save League", use_container_width=True):
-                        if new_league_name.strip() and new_draft_url.strip():
-                            # Extract draft ID from URL
-                            draft_id = extract_draft_id_from_url(new_draft_url)
-                            if draft_id:
-                                if league_manager.add_league(new_league_name.strip(), new_draft_url.strip(), draft_id):
-                                    st.success(f"✅ Saved league: {new_league_name}")
-                                    st.rerun()
-                                else:
-                                    st.error("❌ League name already exists. Choose a different name.")
-                            else:
-                                st.error("❌ Could not extract draft ID from URL. Please check the format.")
-                        else:
-                            st.error("❌ Please fill in both league name and draft URL.")
-                
-                with col_b:
-                    if st.form_submit_button("Test URL", use_container_width=True):
-                        if new_draft_url.strip():
-                            draft_id = extract_draft_id_from_url(new_draft_url)
-                            if draft_id:
-                                st.success(f"✅ Valid URL! Draft ID: {draft_id}")
-                            else:
-                                st.error("❌ Invalid URL format")
-                        else:
-                            st.error("❌ Please enter a draft URL first")
-        
-        # Export/Import Section
-        with st.expander("📁 Export/Import Leagues", expanded=False):
-            # Export section (top)
-            if league_manager.get_league_count() > 0:
-                export_data = league_manager.export_leagues()
-                st.download_button(
-                    label="📥 Export Leagues",
-                    data=export_data,
-                    file_name="fantasy_leagues_backup.json",
-                    mime="application/json"
-                )
-            else:
-                st.info("No leagues to export")
-            
-            # Import section (bottom)
-            st.markdown("**Import Leagues:**")
-            uploaded_leagues = st.file_uploader(
-                "Import Leagues",
-                type=['json'],
-                help="Upload a previously exported leagues file"
-            )
-            
-            if uploaded_leagues is not None:
-                try:
-                    leagues_content = uploaded_leagues.read().decode('utf-8')
-                    if league_manager.import_leagues(leagues_content):
-                        st.success("✅ Leagues imported successfully!")
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed to import leagues")
-                except Exception as e:
-                    st.error(f"❌ Error importing leagues: {e}")
-        
-        st.divider()
-        
-        # Quick Draft Actions (if connected)
-        if st.session_state.draft_tool and st.session_state.draft_tool.sleeper_draft_id:
-            # The refresh button will be moved to the main content area
-            pass
 
 
 def render_search(draft_tool: FantasyDraftTool) -> None:
@@ -724,14 +615,205 @@ def render_top_overall(draft_tool: FantasyDraftTool) -> None:
         render_player_card(p, draft_tool.sleeper_players, idx)
 
 
-def main() -> None:
-    initialize_session_state()
-    inject_css()
+def render_navigation() -> None:
+    """Render navigation menu at the top"""
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col1:
+        if st.button("📊 Weekly Rankings", use_container_width=True):
+            st.query_params.page = "weekly-rankings"
+            st.rerun()
+    
+    with col3:
+        if st.button("🏈 Draft Assistant", use_container_width=True):
+            st.query_params.page = "draft-assistant"
+            st.rerun()
+    
+    with col2:
+        st.markdown('<div style="text-align: center; padding: 10px; color: #9ca3af;">Fantasy Football Tool</div>', unsafe_allow_html=True)
 
+
+def render_weekly_rankings_sidebar() -> None:
+    """Render the sidebar for Weekly Rankings page"""
+    with st.sidebar:
+        st.header("Setup")
+        
+        # League Discovery Section
+        st.subheader("🏈 Discover Your Leagues")
+        username = st.text_input("Sleeper username", placeholder="your_username", key="weekly_username")
+        season_year = FantasyDraftTool.get_current_season_year()
+        st.caption(f"Using current season: {season_year}")
+        
+        if st.button("🔎 Find my leagues", use_container_width=True, disabled=not bool(username.strip()), key="weekly_find_leagues"):
+            with st.spinner("Fetching leagues..."):
+                user_id = FantasyDraftTool.fetch_user_id_by_username(username.strip())
+                if not user_id:
+                    st.error("❌ Could not resolve user_id from username.")
+                else:
+                    leagues = FantasyDraftTool.fetch_user_leagues(user_id, int(season_year))
+                    if not leagues:
+                        st.warning("No leagues found for this season.")
+                    else:
+                        league_options = []
+                        for lg in leagues:
+                            league_id = lg.get("league_id")
+                            league_name = lg.get("name") or f"League {league_id}"
+                            league_options.append((league_name, league_id))
+                        
+                        st.session_state.weekly_user_id = user_id
+                        st.session_state.weekly_discovered_leagues = league_options
+                        st.success(f"✅ Found {len(league_options)} leagues.")
+        
+        # Show discovered leagues
+        if "weekly_discovered_leagues" in st.session_state and st.session_state.weekly_discovered_leagues:
+            st.markdown("**Your Leagues (click to analyze):**")
+            for league_name, league_id in st.session_state.weekly_discovered_leagues:
+                if st.button(f"📊 {league_name}", key=f"weekly_league_{league_id}", use_container_width=True):
+                    st.session_state.selected_weekly_league = (league_name, league_id)
+                    st.rerun()
+
+
+def render_weekly_rankings_content() -> None:
+    """Render the main content for Weekly Rankings page"""
+    st.markdown('<div class="app-title">Weekly Rankings</div>', unsafe_allow_html=True)
+    st.markdown('<div class="app-caption">Get start/sit recommendations and waiver wire suggestions for your leagues.</div>', unsafe_allow_html=True)
+    
+    # Show analysis for selected league
+    if "selected_weekly_league" in st.session_state:
+        league_name, league_id = st.session_state.selected_weekly_league
+        st.markdown(f"### Analyzing: {league_name}")
+        
+        # Load weekly rankings
+        with st.spinner("Loading weekly rankings..."):
+            weekly_rankings = FantasyDraftTool.load_weekly_rankings()
+        
+        if not weekly_rankings:
+            st.error("❌ No weekly rankings files found in weekly_rankings folder.")
+            st.info("Please add your weekly rankings CSV files to the weekly_rankings folder.")
+            return
+        
+        
+        # Load league data
+        with st.spinner("Loading league data..."):
+            rosters = FantasyDraftTool.fetch_league_rosters(league_id)
+            users = FantasyDraftTool.fetch_league_users(league_id)
+            
+        # Get Sleeper players data (always fetch fresh to avoid caching issues)
+        with st.spinner("Loading fresh player data..."):
+            draft_tool = FantasyDraftTool("")
+            draft_tool.fetch_sleeper_data()
+            sleeper_players = draft_tool.sleeper_players
+        
+        if not rosters or not users:
+            st.error("❌ Could not load league data.")
+            return
+        
+        # Find user's roster
+        user_id = st.session_state.weekly_user_id
+        user_roster = None
+        for roster in rosters:
+            if roster.get('owner_id') == user_id:
+                user_roster = roster
+                break
+        
+        if not user_roster:
+            st.error("❌ Could not find your roster in this league.")
+            return
+        
+        # Get user's players
+        user_player_ids = user_roster.get('players', [])
+        if not user_player_ids:
+            st.warning("⚠️ Your roster appears to be empty.")
+            return
+        
+        
+        # Get league roster settings
+        with st.spinner("Loading league settings..."):
+            roster_settings = FantasyDraftTool.get_league_roster_settings(league_id)
+        
+        # Get all league rosters to check availability
+        with st.spinner("Loading all league rosters..."):
+            all_rosters = FantasyDraftTool.fetch_league_rosters(league_id)
+            all_league_players = []
+            for roster in all_rosters:
+                for player_id in roster.get('players', []):
+                    all_league_players.append({'player_id': player_id})
+        
+        # Analyze weekly rankings
+        with st.spinner("Analyzing weekly rankings..."):
+            user_players_list = [{'player_id': pid} for pid in user_player_ids]
+            analysis = FantasyDraftTool.analyze_weekly_rankings(weekly_rankings, user_players_list, sleeper_players, roster_settings, all_league_players)
+        
+        # Show league settings
+        if roster_settings:
+            st.markdown("#### League Settings")
+            settings_text = ", ".join([f"{pos}: {count}" for pos, count in roster_settings.items()])
+            st.info(f"**Roster Requirements:** {settings_text}")
+        
+        # Show Start/Sit Recommendations
+        st.markdown("#### 🎯 Start/Sit Recommendations")
+        
+        # Starting Lineup
+        if analysis['starters']:
+            st.markdown("**✅ RECOMMENDED STARTING LINEUP:**")
+            for i, player in enumerate(analysis['starters'], 1):
+                position_display = player.get('position_with_rank', player['position'])
+                waiver_indicator = " (Free Agent))" if player.get('is_waiver_wire', False) else ""
+                st.write(f"{i}. **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**{waiver_indicator}")
+        else:
+            st.warning("No starting lineup recommendations available.")
+        
+        # Bench Players
+        if analysis['bench']:
+            st.markdown("**🪑 BENCH PLAYERS:**")
+            for i, player in enumerate(analysis['bench'], 1):
+                position_display = player.get('position_with_rank', player['position'])
+                st.write(f"{i}. **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**")
+        else:
+            st.info("No bench players.")
+        
+        # Defenses (if not in starting lineup)
+        if analysis['defenses'] and len(analysis['defenses']) > 1:
+            st.markdown("**🛡️ OTHER DEFENSES ON ROSTER:**")
+            for i, defense in enumerate(analysis['defenses'][1:], 1):  # Skip first one (already in lineup)
+                st.write(f"{i}. **{defense['name']}** - **Rank #{defense['rank']}**")
+        
+        # Kickers (if not in starting lineup)
+        if analysis['kickers'] and len(analysis['kickers']) > 1:
+            st.markdown("**🦵 OTHER KICKERS ON ROSTER:**")
+            for i, kicker in enumerate(analysis['kickers'][1:], 1):  # Skip first one (already in lineup)
+                st.write(f"{i}. **{kicker['name']}** ({kicker['team']}) - **Rank #{kicker['rank']}**")
+        
+        # Waiver Wire Suggestions
+        st.markdown("#### 💡 Waiver Wire Suggestions")
+        
+        # Defense suggestions
+        if analysis['waiver_suggestions']['defenses']:
+            st.markdown("**Top 5 Defenses:**")
+            for i, defense in enumerate(analysis['waiver_suggestions']['defenses'][:5], 1):
+                status = "On Your Roster" if defense.get('is_on_roster', False) else "Free Agent"
+                st.write(f"{i}. **{defense['name']}** - **Rank #{defense['rank']}** ({status})")
+        else:
+            st.info("No defense suggestions available.")
+        
+        # Kicker suggestions
+        if analysis['waiver_suggestions']['kickers']:
+            st.markdown("**Top 5 Kickers:**")
+            for i, kicker in enumerate(analysis['waiver_suggestions']['kickers'][:5], 1):
+                status = "On Your Roster" if kicker.get('is_on_roster', False) else "Free Agent"
+                st.write(f"{i}. **{kicker['name']}** ({kicker['team']}) - **Rank #{kicker['rank']}** ({status})")
+        else:
+            st.info("No kicker suggestions available.")
+    else:
+        st.info("👆 Use the sidebar to discover your leagues and select one to analyze.")
+
+
+def render_draft_assistant_page() -> None:
+    """Render the Draft Assistant page"""
     render_sidebar()
 
     if not st.session_state.draft_tool:
-        st.info("👆 Use the sidebar to load FantasyPros rankings or upload your custom CSV file.")
+        st.info("Use the sidebar to load FantasyPros rankings")
         st.markdown("""
         ### Quick Start Options:
         
@@ -739,10 +821,6 @@ def main() -> None:
         - Click one of the scoring format buttons (Standard, Half-PPR, or PPR)
         - Rankings are automatically loaded from FantasyPros
         - No file download needed!
-        
-        **📁 Custom Rankings:**
-        - Upload your own CSV file with the required format
-        - See the CSV format requirements in the sidebar
         """)
         return
 
@@ -788,6 +866,30 @@ def main() -> None:
             st.write("None")
         else:
             st.write(unmatched)
+
+
+def render_weekly_rankings_page() -> None:
+    """Render the Weekly Rankings page"""
+    render_weekly_rankings_sidebar()
+    render_weekly_rankings_content()
+
+
+def main() -> None:
+    initialize_session_state()
+    inject_css()
+
+    # Get current page from URL parameters
+    current_page = st.query_params.get("page", "weekly-rankings")
+    
+    # Render navigation
+    render_navigation()
+    st.divider()
+    
+    # Render appropriate page based on URL
+    if current_page == "draft-assistant":
+        render_draft_assistant_page()
+    else:  # default to weekly-rankings
+        render_weekly_rankings_page()
 
 
 if __name__ == "__main__":

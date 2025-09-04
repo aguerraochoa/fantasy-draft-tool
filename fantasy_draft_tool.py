@@ -419,6 +419,584 @@ class FantasyDraftTool:
         else:
             print("Sleeper draft ID cleared.")
 
+    # ------------------------------
+    # Sleeper discovery helper APIs
+    # ------------------------------
+    @staticmethod
+    def get_current_season_year() -> int:
+        """Return the current NFL season year (UTC-based)."""
+        from datetime import datetime
+        now = datetime.utcnow()
+        return now.year
+
+    @staticmethod
+    def fetch_user_id_by_username(username: str) -> Optional[str]:
+        """Look up a Sleeper user_id from a username."""
+        try:
+            if not username:
+                return None
+            url = f"https://api.sleeper.app/v1/user/{username}"
+            resp = requests.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("user_id")
+        except requests.RequestException as e:
+            print(f"Error fetching user_id for username '{username}': {e}")
+            return None
+
+    @staticmethod
+    def fetch_user_leagues(user_id: str, season_year: int) -> List[dict]:
+        """Get all leagues for a user for a given season."""
+        try:
+            if not user_id:
+                return []
+            url = f"https://api.sleeper.app/v1/user/{user_id}/leagues/nfl/{season_year}"
+            resp = requests.get(url)
+            resp.raise_for_status()
+            leagues = resp.json()
+            if isinstance(leagues, list):
+                return leagues
+            return []
+        except requests.RequestException as e:
+            print(f"Error fetching leagues for user_id '{user_id}': {e}")
+            return []
+
+    @staticmethod
+    def fetch_league_drafts(league_id: str) -> List[dict]:
+        """Get all drafts for a league (typically one, but may include past drafts)."""
+        try:
+            if not league_id:
+                return []
+            url = f"https://api.sleeper.app/v1/league/{league_id}/drafts"
+            resp = requests.get(url)
+            resp.raise_for_status()
+            drafts = resp.json()
+            if isinstance(drafts, list):
+                return drafts
+            return []
+        except requests.RequestException as e:
+            print(f"Error fetching drafts for league_id '{league_id}': {e}")
+            return []
+
+    # ------------------------------
+    # Weekly Rankings functionality
+    # ------------------------------
+    @staticmethod
+    def get_weekly_rankings_files() -> Dict[str, str]:
+        """Get the latest weekly rankings files from the weekly_rankings folder."""
+        import os
+        import glob
+        
+        rankings_dir = "weekly_rankings"
+        if not os.path.exists(rankings_dir):
+            return {}
+        
+        # Look for files matching the pattern: FantasyPros_2025_Week_X_TYPE_Rankings.csv
+        files = {}
+        
+        # Find OP (Offensive Players) file
+        op_files = glob.glob(f"{rankings_dir}/FantasyPros_*_Week_*_OP_Rankings.csv")
+        if op_files:
+            # Get the latest week (assuming you delete previous weeks)
+            files['OP'] = op_files[0]
+        
+        # Find DST file
+        dst_files = glob.glob(f"{rankings_dir}/FantasyPros_*_Week_*_DST_Rankings.csv")
+        if dst_files:
+            files['DST'] = dst_files[0]
+        
+        # Find K (Kicker) file
+        k_files = glob.glob(f"{rankings_dir}/FantasyPros_*_Week_*_K_Rankings.csv")
+        if k_files:
+            files['K'] = k_files[0]
+        
+        return files
+
+    @staticmethod
+    def load_weekly_rankings() -> Dict[str, List[Dict]]:
+        """Load weekly rankings from CSV files."""
+        files = FantasyDraftTool.get_weekly_rankings_files()
+        rankings = {}
+        
+        for position_type, file_path in files.items():
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    rankings[position_type] = list(reader)
+                print(f"Loaded {len(rankings[position_type])} {position_type} rankings from {file_path}")
+            except Exception as e:
+                print(f"Error loading {position_type} rankings from {file_path}: {e}")
+                rankings[position_type] = []
+        
+        return rankings
+
+    @staticmethod
+    def fetch_league_rosters(league_id: str) -> List[dict]:
+        """Get all rosters in a league."""
+        try:
+            if not league_id:
+                return []
+            url = f"https://api.sleeper.app/v1/league/{league_id}/rosters"
+            resp = requests.get(url)
+            resp.raise_for_status()
+            rosters = resp.json()
+            if isinstance(rosters, list):
+                return rosters
+            return []
+        except requests.RequestException as e:
+            print(f"Error fetching rosters for league_id '{league_id}': {e}")
+            return []
+
+    @staticmethod
+    def fetch_league_users(league_id: str) -> List[dict]:
+        """Get all users in a league."""
+        try:
+            if not league_id:
+                return []
+            url = f"https://api.sleeper.app/v1/league/{league_id}/users"
+            resp = requests.get(url)
+            resp.raise_for_status()
+            users = resp.json()
+            if isinstance(users, list):
+                return users
+            return []
+        except requests.RequestException as e:
+            print(f"Error fetching users for league_id '{league_id}': {e}")
+            return []
+
+    # ------------------------------
+    # Weekly Rankings Analysis
+    # ------------------------------
+    @staticmethod
+    def analyze_weekly_rankings(weekly_rankings: Dict[str, List[Dict]], user_players: List[dict], sleeper_players: Dict[str, dict], roster_settings: Dict, all_league_players: List[dict] = None) -> Dict:
+        """Analyze weekly rankings and provide start/sit recommendations based on rankings and roster requirements."""
+        analysis = {
+            'starters': [],
+            'bench': [],
+            'defenses': [],
+            'kickers': [],
+            'waiver_suggestions': {
+                'defenses': [],
+                'kickers': []
+            }
+        }
+        
+        # Process offensive players (QB, RB, WR, TE) and create ranked list
+        user_offensive_players = []
+        if 'OP' in weekly_rankings:
+            op_rankings = weekly_rankings['OP']
+            
+            for rank_idx, ranking in enumerate(op_rankings):
+                player_name = ranking.get('PLAYER NAME', '').strip()
+                position_with_rank = ranking.get('POS', '').strip()
+                
+                # Extract base position from position with rank (e.g., "WR2" -> "WR", "QB9" -> "QB")
+                base_position = position_with_rank
+                if position_with_rank and position_with_rank[0].isalpha():
+                    # Find where the position ends and rank begins
+                    for i, char in enumerate(position_with_rank):
+                        if char.isdigit():
+                            base_position = position_with_rank[:i]
+                            break
+                
+                # Find matching player in user's roster using fuzzy matching
+                matched = False
+                for user_player in user_players:
+                    sleeper_player = sleeper_players.get(user_player.get('player_id', ''))
+                    if sleeper_player:
+                        sleeper_name = sleeper_player.get('full_name', '')
+                        
+                        # Try exact match first
+                        if sleeper_name == player_name:
+                            user_offensive_players.append({
+                                'name': player_name,
+                                'position': base_position,  # Use base position for roster logic
+                                'position_with_rank': position_with_rank,  # Keep original for display
+                                'rank': rank_idx + 1,  # 1-based ranking
+                                'team': sleeper_player.get('team', ''),
+                                'sleeper_id': user_player.get('player_id'),
+                                'is_on_roster': True
+                            })
+                            matched = True
+                            break
+                        
+                        # Try normalized exact match
+                        normalized_fp = FantasyDraftTool._normalize_name(player_name)
+                        normalized_sleeper = FantasyDraftTool._normalize_name(sleeper_name)
+                        if normalized_fp == normalized_sleeper:
+                            user_offensive_players.append({
+                                'name': player_name,
+                                'position': base_position,
+                                'position_with_rank': position_with_rank,
+                                'rank': rank_idx + 1,
+                                'team': sleeper_player.get('team', ''),
+                                'sleeper_id': user_player.get('player_id'),
+                                'is_on_roster': True
+                            })
+                            matched = True
+                            break
+                
+                # If no exact match found, try fuzzy matching
+                if not matched:
+                    # Build candidate list from user's roster
+                    roster_candidates = []
+                    for user_player in user_players:
+                        sleeper_player = sleeper_players.get(user_player.get('player_id', ''))
+                        if sleeper_player:
+                            sleeper_name = sleeper_player.get('full_name', '')
+                            if sleeper_name:
+                                roster_candidates.append((sleeper_name, user_player.get('player_id')))
+                    
+                    if roster_candidates:
+                        # Try fuzzy matching
+                        candidate_names = [name for name, _ in roster_candidates]
+                        best_match = process.extractOne(
+                            player_name,
+                            candidate_names,
+                            scorer=fuzz.token_sort_ratio,
+                        )
+                        
+                        if best_match and best_match[1] >= 88:  # High confidence threshold
+                            matched_name = best_match[0]
+                            # Find the corresponding player_id
+                            for name, player_id in roster_candidates:
+                                if name == matched_name:
+                                    sleeper_player = sleeper_players.get(player_id)
+                                    user_offensive_players.append({
+                                        'name': player_name,
+                                        'position': base_position,
+                                        'position_with_rank': position_with_rank,
+                                        'rank': rank_idx + 1,
+                                        'team': sleeper_player.get('team', ''),
+                                        'sleeper_id': player_id,
+                                        'is_on_roster': True
+                                    })
+                                    break
+        
+        # Sort by rank (ascending - lower rank number is better)
+        user_offensive_players.sort(key=lambda x: x['rank'])
+        
+        print(f"Found {len(user_offensive_players)} matching players after fuzzy matching")
+        
+        # Process defenses FIRST
+        if 'DST' in weekly_rankings:
+            dst_rankings = weekly_rankings['DST']
+            print(f"Processing {len(dst_rankings)} defenses from weekly rankings...")
+            
+            for rank_idx, ranking in enumerate(dst_rankings):
+                team_name = ranking.get('PLAYER NAME', '').strip()
+                team_abbrev = ranking.get('TEAM', '').strip()
+                
+                # Check if user has this defense
+                is_on_roster = False
+                for user_player in user_players:
+                    sleeper_player = sleeper_players.get(user_player.get('player_id', ''))
+                    if sleeper_player and sleeper_player.get('position') == 'DEF':
+                        sleeper_team = sleeper_player.get('team', '')
+                        sleeper_name = sleeper_player.get('full_name', '')
+                        
+                        # Try multiple matching strategies
+                        if (sleeper_team == team_abbrev or 
+                            sleeper_team == team_name or 
+                            sleeper_name == team_name or
+                            team_abbrev in sleeper_name or
+                            team_name in sleeper_name):
+                            
+                            analysis['defenses'].append({
+                                'name': team_name,
+                                'rank': rank_idx + 1,
+                                'team': team_abbrev,
+                                'sleeper_id': user_player.get('player_id'),
+                                'is_on_roster': True
+                            })
+                            print(f"Matched defense: {team_name} ({team_abbrev}) - Rank #{rank_idx + 1}")
+                            is_on_roster = True
+                            break
+                
+                # If not on roster, check if it's available (not owned by any team in the league)
+                if not is_on_roster:
+                    # Check if this defense is owned by any team in the league
+                    is_available = True
+                    if all_league_players:
+                        for league_player in all_league_players:
+                            sleeper_player = sleeper_players.get(league_player.get('player_id', ''))
+                            if sleeper_player and sleeper_player.get('position') == 'DEF':
+                                sleeper_team = sleeper_player.get('team', '')
+                                sleeper_name = sleeper_player.get('full_name', '')
+                                
+                                # Check if this is the same defense
+                                if (sleeper_team == team_abbrev or 
+                                    sleeper_team == team_name or 
+                                    sleeper_name == team_name or
+                                    team_abbrev in sleeper_name or
+                                    team_name in sleeper_name):
+                                    is_available = False
+                                    break
+                    
+                    if is_available:
+                        analysis['waiver_suggestions']['defenses'].append({
+                            'name': team_name,
+                            'rank': rank_idx + 1,
+                            'team': team_abbrev,
+                            'is_on_roster': False
+                        })
+            
+            print(f"Found {len(analysis['defenses'])} defenses on roster")
+        
+        # Process kickers FIRST
+        if 'K' in weekly_rankings:
+            k_rankings = weekly_rankings['K']
+            print(f"Processing {len(k_rankings)} kickers from weekly rankings...")
+            
+            for rank_idx, ranking in enumerate(k_rankings):
+                player_name = ranking.get('PLAYER NAME', '').strip()
+                team_abbrev = ranking.get('TEAM', '').strip()
+                
+                # Check if user has this kicker using fuzzy matching
+                is_on_roster = False
+                for user_player in user_players:
+                    sleeper_player = sleeper_players.get(user_player.get('player_id', ''))
+                    if sleeper_player and sleeper_player.get('position') == 'K':
+                        sleeper_name = sleeper_player.get('full_name', '')
+                        
+                        # Try exact match first
+                        if sleeper_name == player_name:
+                            analysis['kickers'].append({
+                                'name': player_name,
+                                'rank': rank_idx + 1,
+                                'team': sleeper_player.get('team', ''),
+                                'sleeper_id': user_player.get('player_id'),
+                                'is_on_roster': True
+                            })
+                            print(f"Matched kicker: {player_name} - Rank #{rank_idx + 1}")
+                            is_on_roster = True
+                            break
+                        
+                        # Try normalized match
+                        normalized_fp = FantasyDraftTool._normalize_name(player_name)
+                        normalized_sleeper = FantasyDraftTool._normalize_name(sleeper_name)
+                        if normalized_fp == normalized_sleeper:
+                            analysis['kickers'].append({
+                                'name': player_name,
+                                'rank': rank_idx + 1,
+                                'team': sleeper_player.get('team', ''),
+                                'sleeper_id': user_player.get('player_id'),
+                                'is_on_roster': True
+                            })
+                            print(f"Matched kicker (normalized): {player_name} - Rank #{rank_idx + 1}")
+                            is_on_roster = True
+                            break
+                
+                # If not on roster, check if it's available (not owned by any team in the league)
+                if not is_on_roster:
+                    # Check if this kicker is owned by any team in the league
+                    is_available = True
+                    if all_league_players:
+                        for league_player in all_league_players:
+                            sleeper_player = sleeper_players.get(league_player.get('player_id', ''))
+                            if sleeper_player and sleeper_player.get('position') == 'K':
+                                sleeper_name = sleeper_player.get('full_name', '')
+                                
+                                # Check if this is the same kicker
+                                if (sleeper_name == player_name or
+                                    FantasyDraftTool._normalize_name(sleeper_name) == FantasyDraftTool._normalize_name(player_name)):
+                                    is_available = False
+                                    break
+                    
+                    if is_available:
+                        analysis['waiver_suggestions']['kickers'].append({
+                            'name': player_name,
+                            'rank': rank_idx + 1,
+                            'team': team_abbrev,
+                            'is_on_roster': False
+                        })
+            
+            print(f"Found {len(analysis['kickers'])} kickers on roster")
+        
+        # Sort DST and K by rank
+        analysis['defenses'].sort(key=lambda x: x['rank'])
+        analysis['kickers'].sort(key=lambda x: x['rank'])
+        analysis['waiver_suggestions']['defenses'].sort(key=lambda x: x['rank'])
+        analysis['waiver_suggestions']['kickers'].sort(key=lambda x: x['rank'])
+        
+        # Create combined top 5 lists for waiver suggestions (including your own players)
+        all_defenses = analysis['defenses'] + analysis['waiver_suggestions']['defenses']
+        all_defenses.sort(key=lambda x: x['rank'])
+        analysis['waiver_suggestions']['defenses'] = all_defenses[:5]  # Top 5 overall
+        
+        all_kickers = analysis['kickers'] + analysis['waiver_suggestions']['kickers']
+        all_kickers.sort(key=lambda x: x['rank'])
+        analysis['waiver_suggestions']['kickers'] = all_kickers[:5]  # Top 5 overall
+        
+        # Determine starting lineup based on roster requirements
+        starters = []
+        bench = []
+        
+        # Count how many of each position we need
+        position_requirements = {
+            'QB': roster_settings.get('QB', 0),
+            'RB': roster_settings.get('RB', 0),
+            'WR': roster_settings.get('WR', 0),
+            'TE': roster_settings.get('TE', 0),
+            'WRRB_FLEX': roster_settings.get('WRRB_FLEX', 0),
+            'WRRBTE_FLEX': roster_settings.get('WRRBTE_FLEX', 0),
+            'SUPER_FLEX': roster_settings.get('SUPER_FLEX', 0)
+        }
+        
+        # Track how many of each position we've used
+        position_used = {pos: 0 for pos in position_requirements.keys()}
+        
+        # First pass: Fill required positions
+        for player in user_offensive_players:
+            pos = player['position']
+            if pos in position_requirements and position_used[pos] < position_requirements[pos]:
+                starters.append(player)
+                position_used[pos] += 1
+            else:
+                bench.append(player)
+        
+        # Second pass: Fill flex positions
+        flex_players = [p for p in bench if p['position'] in ['RB', 'WR', 'TE']]
+        flex_players.sort(key=lambda x: x['rank'])  # Sort by rank for flex decisions
+        
+        # Fill WRRBTE_FLEX (can use RB, WR, or TE)
+        wrrbte_flex_needed = position_requirements.get('WRRBTE_FLEX', 0)
+        for _ in range(wrrbte_flex_needed):
+            if flex_players:
+                best_flex = flex_players.pop(0)
+                starters.append(best_flex)
+                bench.remove(best_flex)
+        
+        # Fill WRRB_FLEX (can use RB or WR)
+        wrrb_flex_needed = position_requirements.get('WRRB_FLEX', 0)
+        for _ in range(wrrb_flex_needed):
+            eligible_players = [p for p in flex_players if p['position'] in ['RB', 'WR']]
+            if eligible_players:
+                best_flex = eligible_players[0]
+                starters.append(best_flex)
+                bench.remove(best_flex)
+                flex_players.remove(best_flex)
+        
+        # Fill SUPER_FLEX (can use QB, RB, WR, or TE)
+        super_flex_needed = position_requirements.get('SUPER_FLEX', 0)
+        for _ in range(super_flex_needed):
+            if flex_players:
+                best_flex = flex_players.pop(0)
+                starters.append(best_flex)
+                bench.remove(best_flex)
+        
+        # Sort starters by roster requirements order and rank within position
+        position_order = ['QB', 'RB', 'WR', 'TE', 'WRRB_FLEX', 'WRRBTE_FLEX', 'SUPER_FLEX']
+        sorted_starters = []
+        
+        # Group starters by position
+        starters_by_pos = {}
+        for starter in starters:
+            pos = starter['position']
+            if pos not in starters_by_pos:
+                starters_by_pos[pos] = []
+            starters_by_pos[pos].append(starter)
+        
+        # Sort each position group by rank (ascending - lower rank is better)
+        for pos in starters_by_pos:
+            starters_by_pos[pos].sort(key=lambda x: x['rank'])
+        
+        # Add starters in roster order
+        for pos in position_order:
+            if pos in starters_by_pos:
+                sorted_starters.extend(starters_by_pos[pos])
+        
+        # Add DST and K to starting lineup - always use best available (waiver wire or roster)
+        dst_needed = roster_settings.get('DEF', 0)
+        k_needed = roster_settings.get('K', 0)
+        
+        # Add DST to lineup - prioritize best available from all sources
+        if dst_needed > 0:
+            best_dst = None
+            is_waiver_wire = False
+            
+            # Check if best waiver wire DST is better than best roster DST
+            if analysis['waiver_suggestions']['defenses']:
+                best_waiver_dst = analysis['waiver_suggestions']['defenses'][0]
+                if analysis['defenses']:
+                    best_roster_dst = analysis['defenses'][0]
+                    # Use waiver wire DST if it has better rank (lower number)
+                    if best_waiver_dst['rank'] < best_roster_dst['rank']:
+                        best_dst = best_waiver_dst
+                        is_waiver_wire = True
+                    else:
+                        best_dst = best_roster_dst
+                else:
+                    # No roster DST, use waiver wire
+                    best_dst = best_waiver_dst
+                    is_waiver_wire = True
+            elif analysis['defenses']:
+                # Only roster DST available
+                best_dst = analysis['defenses'][0]
+            
+            if best_dst:
+                best_dst = best_dst.copy()  # Don't modify original
+                best_dst['position'] = 'DEF'
+                if is_waiver_wire:
+                    best_dst['is_waiver_wire'] = True
+                sorted_starters.append(best_dst)
+        
+        # Add K to lineup - prioritize best available from all sources
+        if k_needed > 0:
+            best_k = None
+            is_waiver_wire = False
+            
+            # Check if best waiver wire K is better than best roster K
+            if analysis['waiver_suggestions']['kickers']:
+                best_waiver_k = analysis['waiver_suggestions']['kickers'][0]
+                if analysis['kickers']:
+                    best_roster_k = analysis['kickers'][0]
+                    # Use waiver wire K if it has better rank (lower number)
+                    if best_waiver_k['rank'] < best_roster_k['rank']:
+                        best_k = best_waiver_k
+                        is_waiver_wire = True
+                    else:
+                        best_k = best_roster_k
+                else:
+                    # No roster K, use waiver wire
+                    best_k = best_waiver_k
+                    is_waiver_wire = True
+            elif analysis['kickers']:
+                # Only roster K available
+                best_k = analysis['kickers'][0]
+            
+            if best_k:
+                best_k = best_k.copy()  # Don't modify original
+                best_k['position'] = 'K'
+                if is_waiver_wire:
+                    best_k['is_waiver_wire'] = True
+                sorted_starters.append(best_k)
+        
+        analysis['starters'] = sorted_starters
+        analysis['bench'] = bench
+        
+        return analysis
+
+    @staticmethod
+    def get_league_roster_settings(league_id: str) -> Dict:
+        """Get league roster settings to understand lineup requirements."""
+        try:
+            url = f"https://api.sleeper.app/v1/league/{league_id}"
+            resp = requests.get(url)
+            resp.raise_for_status()
+            league_data = resp.json()
+            
+            # Extract roster settings
+            roster_positions = league_data.get('roster_positions', [])
+            position_counts = {}
+            for pos in roster_positions:
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+            
+            return position_counts
+        except requests.RequestException as e:
+            print(f"Error fetching league settings for league_id '{league_id}': {e}")
+            return {}
+
     def fetch_sleeper_draft_picks(self) -> None:
         """Fetch current picks from the configured Sleeper draft and update drafted status"""
         if not self.sleeper_draft_id:

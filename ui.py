@@ -477,7 +477,12 @@ def render_sidebar() -> None:
         # New: Username-based discovery for leagues and drafts
         st.subheader("🏈 Sleeper: Discover Leagues & Drafts")
         username = st.text_input("Sleeper username", placeholder="your_username")
-        season_year = FantasyDraftTool.get_current_season_year()
+        # Get current season year with fallback
+        try:
+            season_year = FantasyDraftTool.get_current_season_year()
+        except AttributeError:
+            from datetime import datetime
+            season_year = datetime.utcnow().year
         st.caption(f"Using current season: {season_year}")
         
         if st.button("🔎 Find my leagues", use_container_width=True, disabled=not bool(username.strip())):
@@ -641,7 +646,12 @@ def render_weekly_rankings_sidebar() -> None:
         # League Discovery Section
         st.subheader("🏈 Discover Your Leagues")
         username = st.text_input("Sleeper username", placeholder="your_username", key="weekly_username")
-        season_year = FantasyDraftTool.get_current_season_year()
+        # Get current season year with fallback
+        try:
+            season_year = FantasyDraftTool.get_current_season_year()
+        except AttributeError:
+            from datetime import datetime
+            season_year = datetime.utcnow().year
         st.caption(f"Using current season: {season_year}")
         
         if st.button("🔎 Find my leagues", use_container_width=True, disabled=not bool(username.strip()), key="weekly_find_leagues"):

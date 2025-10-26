@@ -705,8 +705,21 @@ def render_weekly_rankings_content() -> None:
         
         # Load league data
         with st.spinner("Loading league data..."):
-            rosters = FantasyDraftTool.fetch_league_rosters(league_id)
-            users = FantasyDraftTool.fetch_league_users(league_id)
+            try:
+                rosters = FantasyDraftTool.fetch_league_rosters(league_id)
+                users = FantasyDraftTool.fetch_league_users(league_id)
+                
+                # Additional validation for chopped leagues
+                if not isinstance(rosters, list):
+                    st.error("❌ Invalid roster data format for this league type.")
+                    return
+                if not isinstance(users, list):
+                    st.error("❌ Invalid user data format for this league type.")
+                    return
+                    
+            except Exception as e:
+                st.error(f"❌ Error loading league data: {str(e)}")
+                return
             
         # Get Sleeper players data (always fetch fresh to avoid caching issues)
         with st.spinner("Loading fresh player data..."):
@@ -722,6 +735,9 @@ def render_weekly_rankings_content() -> None:
         user_id = st.session_state.weekly_user_id
         user_roster = None
         for roster in rosters:
+            # Handle different roster structures (normal vs chopped leagues)
+            if not isinstance(roster, dict):
+                continue
             if roster.get('owner_id') == user_id:
                 user_roster = roster
                 break
@@ -732,6 +748,10 @@ def render_weekly_rankings_content() -> None:
         
         # Get user's players
         user_player_ids = user_roster.get('players', [])
+        # Handle case where players might not be a list
+        if not isinstance(user_player_ids, list):
+            st.error("❌ Invalid roster structure for this league type.")
+            return
         if not user_player_ids:
             st.warning("⚠️ Your roster appears to be empty.")
             return
@@ -746,8 +766,18 @@ def render_weekly_rankings_content() -> None:
             all_rosters = FantasyDraftTool.fetch_league_rosters(league_id)
             all_league_players = []
             for roster in all_rosters:
-                for player_id in roster.get('players', []):
-                    all_league_players.append({'player_id': player_id})
+                # Handle different roster structures (normal vs chopped leagues)
+                if not isinstance(roster, dict):
+                    continue
+                
+                players = roster.get('players', [])
+                # Handle case where players might not be a list
+                if not isinstance(players, list):
+                    continue
+                    
+                for player_id in players:
+                    if player_id:  # Skip None/empty player IDs
+                        all_league_players.append({'player_id': player_id})
         
         # Analyze weekly rankings
         with st.spinner("Analyzing weekly rankings..."):

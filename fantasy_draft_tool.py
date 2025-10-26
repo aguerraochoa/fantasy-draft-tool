@@ -768,7 +768,29 @@ class FantasyDraftTool:
             resp.raise_for_status()
             rosters = resp.json()
             if isinstance(rosters, list):
-                return rosters
+                # Validate roster structure and add debugging for chopped leagues
+                validated_rosters = []
+                for i, roster in enumerate(rosters):
+                    if not isinstance(roster, dict):
+                        print(f"Warning: Roster {i} is not a dictionary: {type(roster)}")
+                        continue
+                    
+                    # Check if players field exists and is valid
+                    players = roster.get('players')
+                    if players is not None and not isinstance(players, list):
+                        print(f"Warning: Roster {i} has invalid players field: {type(players)}")
+                        # Try to convert to list if possible
+                        try:
+                            roster['players'] = list(players) if players else []
+                        except (TypeError, ValueError):
+                            print(f"Could not convert players field to list for roster {i}")
+                            roster['players'] = []
+                    elif players is None:
+                        roster['players'] = []
+                    
+                    validated_rosters.append(roster)
+                
+                return validated_rosters
             return []
         except requests.RequestException as e:
             print(f"Error fetching rosters for league_id '{league_id}': {e}")

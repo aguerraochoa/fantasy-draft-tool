@@ -540,7 +540,13 @@ class FantasyDraftTool:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
-                    rankings[position_type] = list(reader)
+                    raw_data = list(reader)
+                    # Filter out empty rows or rows that don't have the expected structure
+                    filtered_data = []
+                    for row in raw_data:
+                        if isinstance(row, dict) and row and any(row.values()):
+                            filtered_data.append(row)
+                    rankings[position_type] = filtered_data
                 print(f"Loaded {len(rankings[position_type])} {position_type} rankings from {file_path}")
             except Exception as e:
                 print(f"Error loading {position_type} rankings from {file_path}: {e}")
@@ -791,6 +797,22 @@ class FantasyDraftTool:
     @staticmethod
     def analyze_weekly_rankings(weekly_rankings: Dict[str, List[Dict]], user_players: List[dict], sleeper_players: Dict[str, dict], roster_settings: Dict, all_league_players: List[dict] = None) -> Dict:
         """Analyze weekly rankings and provide start/sit recommendations based on rankings and roster requirements."""
+        # Validate inputs
+        if not isinstance(weekly_rankings, dict):
+            print("Warning: weekly_rankings is not a dictionary")
+            weekly_rankings = {}
+        if not isinstance(user_players, list):
+            print("Warning: user_players is not a list")
+            user_players = []
+        if not isinstance(sleeper_players, dict):
+            print("Warning: sleeper_players is not a dictionary")
+            sleeper_players = {}
+        if not isinstance(roster_settings, dict):
+            print("Warning: roster_settings is not a dictionary")
+            roster_settings = {}
+        if all_league_players is None:
+            all_league_players = []
+            
         analysis = {
             'starters': [],
             'bench': [],
@@ -808,8 +830,16 @@ class FantasyDraftTool:
             op_rankings = weekly_rankings['OP']
             
             for rank_idx, ranking in enumerate(op_rankings):
+                # Skip if ranking is not a dictionary or is empty
+                if not isinstance(ranking, dict) or not ranking:
+                    continue
+                    
                 player_name = ranking.get('PLAYER NAME', '').strip()
                 position_with_rank = ranking.get('POS', '').strip()
+                
+                # Skip if essential data is missing
+                if not player_name or not position_with_rank:
+                    continue
                 
                 # Extract base position from position with rank (e.g., "WR2" -> "WR", "QB9" -> "QB")
                 base_position = position_with_rank
@@ -918,8 +948,16 @@ class FantasyDraftTool:
             print(f"Processing {len(dst_rankings)} defenses from weekly rankings...")
             
             for rank_idx, ranking in enumerate(dst_rankings):
+                # Skip if ranking is not a dictionary or is empty
+                if not isinstance(ranking, dict) or not ranking:
+                    continue
+                    
                 team_name = ranking.get('PLAYER NAME', '').strip()
                 team_abbrev = ranking.get('TEAM', '').strip()
+                
+                # Skip if essential data is missing
+                if not team_name:
+                    continue
                 
                 # Check if user has this defense
                 is_on_roster = False
@@ -983,8 +1021,16 @@ class FantasyDraftTool:
             print(f"Processing {len(k_rankings)} kickers from weekly rankings...")
             
             for rank_idx, ranking in enumerate(k_rankings):
+                # Skip if ranking is not a dictionary or is empty
+                if not isinstance(ranking, dict) or not ranking:
+                    continue
+                    
                 player_name = ranking.get('PLAYER NAME', '').strip()
                 team_abbrev = ranking.get('TEAM', '').strip()
+                
+                # Skip if essential data is missing
+                if not player_name:
+                    continue
                 
                 # Check if user has this kicker using fuzzy matching
                 is_on_roster = False

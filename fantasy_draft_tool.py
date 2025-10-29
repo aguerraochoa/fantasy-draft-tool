@@ -1427,74 +1427,95 @@ class FantasyDraftTool:
         # Sort all available players by rank (ascending - lower rank is better)
         all_available_players.sort(key=lambda x: x['rank'])
         
-        # Now build the optimal lineup using greedy algorithm
+        # Now build the optimal lineup using the same two-phase approach as the working code
         optimal_starters = []
-        used_players = set()
+        bench = []
         
-        # Get roster requirements
+        # Get roster requirements (same structure as working code)
         position_requirements = {
             'QB': roster_settings.get('QB', 0),
             'RB': roster_settings.get('RB', 0),
             'WR': roster_settings.get('WR', 0),
             'TE': roster_settings.get('TE', 0),
-            'FLEX': roster_settings.get('FLEX', 0) + roster_settings.get('WRRBTE_FLEX', 0),
-            'SUPER_FLEX': roster_settings.get('SUPER_FLEX', 0),
-            'WRRB_FLEX': roster_settings.get('WRRB_FLEX', 0)
+            'WRRB_FLEX': roster_settings.get('WRRB_FLEX', 0),
+            'FLEX': roster_settings.get('FLEX', 0),
+            'WRRBTE_FLEX': roster_settings.get('WRRBTE_FLEX', 0),
+            'SUPER_FLEX': roster_settings.get('SUPER_FLEX', 0)
         }
         
-        # Fill required positions first (QB, RB, WR, TE)
-        for position in ['QB', 'RB', 'WR', 'TE']:
-            needed = position_requirements.get(position, 0)
-            filled = 0
-            
-            for player in all_available_players:
-                if player['position'] == position and player['sleeper_id'] not in used_players and filled < needed:
-                    player_copy = player.copy()
-                    optimal_starters.append(player_copy)
-                    used_players.add(player['sleeper_id'])
-                    filled += 1
+        # Track how many of each position we've used
+        position_used = {pos: 0 for pos in position_requirements.keys()}
         
-        # Fill FLEX positions (RB, WR, TE eligible)
-        flex_needed = position_requirements.get('FLEX', 0)
-        flex_filled = 0
-        
+        # PHASE 1: Fill required positions first (QB, RB, WR, TE) - same as working code
         for player in all_available_players:
-            if (player['position'] in ['RB', 'WR', 'TE'] and 
-                player['sleeper_id'] not in used_players and 
-                flex_filled < flex_needed):
-                player_copy = player.copy()
-                player_copy['flex_slot'] = 'FLEX'
-                optimal_starters.append(player_copy)
-                used_players.add(player['sleeper_id'])
-                flex_filled += 1
+            pos = player['position']
+            if pos in position_requirements and position_used[pos] < position_requirements[pos]:
+                optimal_starters.append(player.copy())
+                position_used[pos] += 1
+            else:
+                bench.append(player)
         
-        # Fill SUPER_FLEX positions (QB, RB, WR, TE eligible)
+        # PHASE 2: Fill flex positions from bench - same logic as working code
+        # Create lists of eligible players for each flex type
+        all_flex_players = [p for p in bench if p['position'] in ['QB', 'RB', 'WR', 'TE']]
+        wrrbte_flex_players = [p for p in bench if p['position'] in ['RB', 'WR', 'TE']]
+        wrrb_flex_players = [p for p in bench if p['position'] in ['RB', 'WR']]
+        
+        # Sort all lists by rank (ascending - lower rank is better)
+        all_flex_players.sort(key=lambda x: x['rank'])
+        wrrbte_flex_players.sort(key=lambda x: x['rank'])
+        wrrb_flex_players.sort(key=lambda x: x['rank'])
+        
+        # Fill SUPER_FLEX (can use QB, RB, WR, or TE) - highest priority
         super_flex_needed = position_requirements.get('SUPER_FLEX', 0)
-        super_flex_filled = 0
+        for _ in range(super_flex_needed):
+            if all_flex_players:
+                best_flex = all_flex_players.pop(0)
+                best_flex_copy = best_flex.copy()
+                best_flex_copy['flex_slot'] = 'SUPER_FLEX'
+                optimal_starters.append(best_flex_copy)
+                bench.remove(best_flex)
+                # Remove from other flex lists if present
+                if best_flex in wrrbte_flex_players:
+                    wrrbte_flex_players.remove(best_flex)
+                if best_flex in wrrb_flex_players:
+                    wrrb_flex_players.remove(best_flex)
         
-        for player in all_available_players:
-            if (player['position'] in ['QB', 'RB', 'WR', 'TE'] and 
-                player['sleeper_id'] not in used_players and 
-                super_flex_filled < super_flex_needed):
-                player_copy = player.copy()
-                player_copy['flex_slot'] = 'SUPER_FLEX'
-                optimal_starters.append(player_copy)
-                used_players.add(player['sleeper_id'])
-                super_flex_filled += 1
+        # Fill FLEX (can use RB, WR, or TE)
+        flex_needed = position_requirements.get('FLEX', 0)
+        for _ in range(flex_needed):
+            if wrrbte_flex_players:
+                best_flex = wrrbte_flex_players.pop(0)
+                best_flex_copy = best_flex.copy()
+                best_flex_copy['flex_slot'] = 'FLEX'
+                optimal_starters.append(best_flex_copy)
+                bench.remove(best_flex)
+                # Remove from WRRB_FLEX list if present
+                if best_flex in wrrb_flex_players:
+                    wrrb_flex_players.remove(best_flex)
         
-        # Fill WRRB_FLEX positions (WR, RB eligible)
+        # Fill WRRBTE_FLEX (can use RB, WR, or TE) - same as FLEX
+        wrrbte_flex_needed = position_requirements.get('WRRBTE_FLEX', 0)
+        for _ in range(wrrbte_flex_needed):
+            if wrrbte_flex_players:
+                best_flex = wrrbte_flex_players.pop(0)
+                best_flex_copy = best_flex.copy()
+                best_flex_copy['flex_slot'] = 'WRRBTE_FLEX'
+                optimal_starters.append(best_flex_copy)
+                bench.remove(best_flex)
+                # Remove from WRRB_FLEX list if present
+                if best_flex in wrrb_flex_players:
+                    wrrb_flex_players.remove(best_flex)
+        
+        # Fill WRRB_FLEX (can use RB or WR only)
         wrrb_flex_needed = position_requirements.get('WRRB_FLEX', 0)
-        wrrb_flex_filled = 0
-        
-        for player in all_available_players:
-            if (player['position'] in ['WR', 'RB'] and 
-                player['sleeper_id'] not in used_players and 
-                wrrb_flex_filled < wrrb_flex_needed):
-                player_copy = player.copy()
-                player_copy['flex_slot'] = 'WRRB_FLEX'
-                optimal_starters.append(player_copy)
-                used_players.add(player['sleeper_id'])
-                wrrb_flex_filled += 1
+        for _ in range(wrrb_flex_needed):
+            if wrrb_flex_players:
+                best_flex = wrrb_flex_players.pop(0)
+                best_flex_copy = best_flex.copy()
+                best_flex_copy['flex_slot'] = 'WRRB_FLEX'
+                optimal_starters.append(best_flex_copy)
+                bench.remove(best_flex)
         
         # Add DST and K from current analysis (no optimization needed)
         for starter in current_starters:
@@ -1503,36 +1524,67 @@ class FantasyDraftTool:
         
         # Compare optimal vs current lineup to identify upgrades
         free_agent_upgrades = []
-        current_player_ids = {s.get('sleeper_id') for s in current_starters if s.get('sleeper_id')}
         
-        for optimal_player in optimal_starters:
-            if (optimal_player.get('is_free_agent', False) and 
-                optimal_player.get('sleeper_id') not in current_player_ids):
+        # Create sets of player IDs for comparison
+        current_player_ids = {s.get('sleeper_id') for s in current_starters if s.get('sleeper_id')}
+        optimal_player_ids = {s.get('sleeper_id') for s in optimal_starters if s.get('sleeper_id')}
+        
+        # Find players in optimal lineup that are not in current lineup (these are the adds)
+        added_players = [p for p in optimal_starters if p.get('sleeper_id') not in current_player_ids]
+        
+        # Find players in current lineup that are not in optimal lineup (these are the drops)
+        dropped_players = [p for p in current_starters if p.get('sleeper_id') not in optimal_player_ids]
+        
+        # Match adds with drops to create upgrade pairs
+        for added_player in added_players:
+            if added_player.get('is_free_agent', False):
+                # Find the best matching dropped player (same position or flex eligible)
+                best_match = None
+                best_improvement = 0
                 
-                # Find what this free agent is replacing
-                position = optimal_player['position']
-                flex_slot = optimal_player.get('flex_slot')
+                for dropped_player in dropped_players:
+                    # Skip DST/K for this analysis
+                    if dropped_player['position'] in ['DEF', 'K']:
+                        continue
+                        
+                    # Check if this is a valid replacement
+                    can_replace = False
+                    
+                    # Same position replacement
+                    if added_player['position'] == dropped_player['position']:
+                        can_replace = True
+                    
+                    # Flex position replacement - check if both can fill flex
+                    elif (added_player.get('flex_slot') and dropped_player.get('flex_slot')):
+                        # Both are in flex positions
+                        added_eligible = added_player['position'] in ['RB', 'WR', 'TE']
+                        dropped_eligible = dropped_player['position'] in ['RB', 'WR', 'TE']
+                        if added_eligible and dropped_eligible:
+                            can_replace = True
+                    
+                    # Cross-position flex replacement (e.g., RB in flex replacing WR in flex)
+                    elif (added_player.get('flex_slot') or dropped_player.get('flex_slot')):
+                        added_eligible = added_player['position'] in ['RB', 'WR', 'TE']
+                        dropped_eligible = dropped_player['position'] in ['RB', 'WR', 'TE']
+                        if added_eligible and dropped_eligible:
+                            can_replace = True
+                    
+                    if can_replace:
+                        improvement = dropped_player['rank'] - added_player['rank']
+                        if improvement > best_improvement:
+                            best_improvement = improvement
+                            best_match = dropped_player
                 
-                # Find the corresponding player in current lineup that this replaces
-                replaced_player = None
-                for current_player in current_starters:
-                    if current_player['position'] == position and not replaced_player:
-                        # For flex positions, match by flex slot
-                        if flex_slot and current_player.get('flex_slot') == flex_slot:
-                            replaced_player = current_player
-                            break
-                        elif not flex_slot and not current_player.get('flex_slot'):
-                            replaced_player = current_player
-                            break
-                
-                if replaced_player:
-                    optimal_player['replaces_player'] = replaced_player
+                if best_match and best_improvement > 0:
+                    added_player['replaces_player'] = best_match
                     free_agent_upgrades.append({
-                        'position': position,
-                        'drop': replaced_player,
-                        'add': optimal_player,
-                        'improvement': replaced_player['rank'] - optimal_player['rank']
+                        'position': added_player['position'],
+                        'drop': best_match,
+                        'add': added_player,
+                        'improvement': best_improvement
                     })
+                    # Remove the matched dropped player so it's not matched again
+                    dropped_players.remove(best_match)
         
         return {
             'optimal_starters': optimal_starters,

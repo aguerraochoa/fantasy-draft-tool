@@ -866,6 +866,57 @@ def render_weekly_rankings_content() -> None:
                     else:
                         st.info("No kicker suggestions available.")
         
+        # Optimal Starting Lineup with Free Agent Analysis Section
+        st.markdown("---")  # Separator line
+        st.markdown("#### ⭐ Optimal Starting Lineup with Free Agent Analysis")
+        
+        # Load and analyze weekly rankings for free agent comparisons
+        with st.spinner("Analyzing optimal lineup with free agents..."):
+            weekly_rankings = FantasyDraftTool.load_weekly_rankings()
+        
+        if weekly_rankings:
+            # Create optimal lineup analysis that compares roster players vs free agents
+            optimal_analysis = FantasyDraftTool.analyze_optimal_lineup_with_free_agents(
+                weekly_rankings, user_players_list, sleeper_players, roster_settings, all_league_players
+            )
+            
+            if optimal_analysis['optimal_starters']:
+                st.markdown("**🎯 OPTIMAL STARTING LINEUP (Including Best Available Free Agents):**")
+                
+                for player in optimal_analysis['optimal_starters']:
+                    position_display = player.get('position_with_rank', player['position'])
+                    
+                    # Determine the roster slot label
+                    roster_slot = player.get('flex_slot', player['position'])
+                    if roster_slot in ['SUPER_FLEX', 'FLEX', 'WRRBTE_FLEX', 'WRRB_FLEX']:
+                        roster_slot = 'FLEX'
+                    
+                    # Check if this is a free agent recommendation
+                    if player.get('is_free_agent', False):
+                        current_player = player.get('replaces_player')
+                        if current_player:
+                            st.write(f"**{roster_slot}** 🔄 **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}** ✨ FREE AGENT")
+                            st.caption(f"   ↳ Upgrade from: {current_player['name']} (Rank #{current_player['rank']}) - Improvement: +{current_player['rank'] - player['rank']} ranks")
+                        else:
+                            st.write(f"**{roster_slot}** **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}** ✨ FREE AGENT")
+                    else:
+                        st.write(f"**{roster_slot}** **{player['name']}** ({position_display}) - {player['team']} - **Rank #{player['rank']}**")
+                
+                # Show summary of potential improvements
+                if optimal_analysis['free_agent_upgrades']:
+                    st.markdown("**📈 Free Agent Upgrade Summary:**")
+                    total_improvement = sum(upgrade['improvement'] for upgrade in optimal_analysis['free_agent_upgrades'])
+                    st.success(f"🚀 **{len(optimal_analysis['free_agent_upgrades'])} potential upgrade(s)** with **+{total_improvement} total rank improvement**")
+                    
+                    for upgrade in optimal_analysis['free_agent_upgrades']:
+                        st.write(f"• **{upgrade['position']}**: {upgrade['add']['name']} (#{upgrade['add']['rank']}) replaces {upgrade['drop']['name']} (#{upgrade['drop']['rank']}) - **+{upgrade['improvement']} ranks**")
+                else:
+                    st.info("✅ Your current starting lineup is already optimal - no better free agents available!")
+            else:
+                st.warning("No optimal lineup analysis available.")
+        else:
+            st.info("📁 No weekly rankings files found for free agent analysis.")
+        
         # ROS Upgrade Recommendations Section
         st.markdown("---")  # Separator line
         st.markdown("#### 🔄 ROS Upgrade Recommendations")

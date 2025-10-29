@@ -1333,7 +1333,7 @@ class FantasyDraftTool:
     def analyze_optimal_lineup_with_free_agents(weekly_rankings: Dict[str, List[Dict]], user_players: List[dict], 
                                               sleeper_players: Dict[str, dict], roster_settings: Dict, 
                                               all_league_players: List[dict] = None) -> Dict:
-        """Analyze optimal starting lineup comparing roster players vs available free agents."""
+        """Analyze optimal starting lineup by finding the best possible combination from roster + free agents."""
         if all_league_players is None:
             all_league_players = []
             
@@ -1342,13 +1342,16 @@ class FantasyDraftTool:
         for roster_player in all_league_players:
             owned_player_ids.add(roster_player['player_id'])
         
-        # First, get the current starting lineup analysis
+        # First, get the current starting lineup analysis for comparison
         current_analysis = FantasyDraftTool.analyze_weekly_rankings(
             weekly_rankings, user_players, sleeper_players, roster_settings, all_league_players
         )
+        current_starters = current_analysis.get('starters', [])
         
-        # Get all available free agents from weekly rankings
-        free_agent_players = []
+        # Build combined pool of ALL available players (roster + free agents)
+        all_available_players = []
+        
+        # Add user's roster players
         if 'OP' in weekly_rankings:
             op_rankings = weekly_rankings['OP']
             
@@ -1374,7 +1377,7 @@ class FantasyDraftTool:
                 if base_position in ['DEF', 'K']:
                     continue
                 
-                # Find matching sleeper player to check if available
+                # Find matching sleeper player
                 found_sleeper_id = None
                 normalized_fp = FantasyDraftTool._normalize_name(player_name)
                 
@@ -1402,90 +1405,139 @@ class FantasyDraftTool:
                             found_sleeper_id = sleeper_id
                             break
                 
-                # If player found and not owned by any team, add to free agents
-                if found_sleeper_id and found_sleeper_id not in owned_player_ids:
+                if found_sleeper_id:
                     sleeper_player = sleeper_players[found_sleeper_id]
-                    free_agent_players.append({
-                        'name': player_name,
-                        'position': base_position,
-                        'position_with_rank': position_with_rank,
-                        'rank': rank_idx + 1,
-                        'team': sleeper_player.get('team', ''),
-                        'sleeper_id': found_sleeper_id,
-                        'is_free_agent': True
-                    })
-        
-        # Sort free agents by rank (ascending - lower rank is better)
-        free_agent_players.sort(key=lambda x: x['rank'])
-        
-        # Create optimal lineup by comparing current starters vs best available free agents
-        optimal_starters = []
-        free_agent_upgrades = []
-        current_starters = current_analysis.get('starters', [])
-        
-        # Group current starters by position for easier comparison
-        starters_by_position = {}
-        for starter in current_starters:
-            pos = starter['position']
-            if pos not in starters_by_position:
-                starters_by_position[pos] = []
-            starters_by_position[pos].append(starter)
-        
-        # Sort each position group by rank
-        for pos in starters_by_position:
-            starters_by_position[pos].sort(key=lambda x: x['rank'])
-        
-        # Group free agents by position
-        free_agents_by_position = {}
-        for fa in free_agent_players:
-            pos = fa['position']
-            if pos not in free_agents_by_position:
-                free_agents_by_position[pos] = []
-            free_agents_by_position[pos].append(fa)
-        
-        # Start with current starters and identify potential upgrades
-        optimal_starters = current_starters.copy()
-        
-        # For each position, check if we should replace worst starter with best free agent
-        positions = ['QB', 'RB', 'WR', 'TE']
-        
-        for position in positions:
-            current_pos_players = starters_by_position.get(position, [])
-            available_fas = free_agents_by_position.get(position, [])
-            
-            if current_pos_players and available_fas:
-                # Find worst current starter and best free agent at this position
-                worst_starter = max(current_pos_players, key=lambda x: x['rank'])
-                best_fa = min(available_fas, key=lambda x: x['rank'])
-                
-                # If free agent is better ranked, recommend the swap
-                if best_fa['rank'] < worst_starter['rank']:
-                    # Create upgraded player entry
-                    upgraded_player = best_fa.copy()
-                    upgraded_player['replaces_player'] = worst_starter
-                    upgraded_player['flex_slot'] = worst_starter.get('flex_slot')
                     
-                    # Track the upgrade
+                    # Check if this player is on user's roster or available as free agent
+                    is_on_roster = any(up['player_id'] == found_sleeper_id for up in user_players)
+                    is_free_agent = found_sleeper_id not in owned_player_ids and not is_on_roster
+                    
+                    if is_on_roster or is_free_agent:
+                        all_available_players.append({
+                            'name': player_name,
+                            'position': base_position,
+                            'position_with_rank': position_with_rank,
+                            'rank': rank_idx + 1,
+                            'team': sleeper_player.get('team', ''),
+                            'sleeper_id': found_sleeper_id,
+                            'is_free_agent': is_free_agent,
+                            'is_on_roster': is_on_roster
+                        })
+        
+        # Sort all available players by rank (ascending - lower rank is better)
+        all_available_players.sort(key=lambda x: x['rank'])
+        
+        # Now build the optimal lineup using greedy algorithm
+        optimal_starters = []
+        used_players = set()
+        
+        # Get roster requirements
+        position_requirements = {
+            'QB': roster_settings.get('QB', 0),
+            'RB': roster_settings.get('RB', 0),
+            'WR': roster_settings.get('WR', 0),
+            'TE': roster_settings.get('TE', 0),
+            'FLEX': roster_settings.get('FLEX', 0) + roster_settings.get('WRRBTE_FLEX', 0),
+            'SUPER_FLEX': roster_settings.get('SUPER_FLEX', 0),
+            'WRRB_FLEX': roster_settings.get('WRRB_FLEX', 0)
+        }
+        
+        # Fill required positions first (QB, RB, WR, TE)
+        for position in ['QB', 'RB', 'WR', 'TE']:
+            needed = position_requirements.get(position, 0)
+            filled = 0
+            
+            for player in all_available_players:
+                if player['position'] == position and player['sleeper_id'] not in used_players and filled < needed:
+                    player_copy = player.copy()
+                    optimal_starters.append(player_copy)
+                    used_players.add(player['sleeper_id'])
+                    filled += 1
+        
+        # Fill FLEX positions (RB, WR, TE eligible)
+        flex_needed = position_requirements.get('FLEX', 0)
+        flex_filled = 0
+        
+        for player in all_available_players:
+            if (player['position'] in ['RB', 'WR', 'TE'] and 
+                player['sleeper_id'] not in used_players and 
+                flex_filled < flex_needed):
+                player_copy = player.copy()
+                player_copy['flex_slot'] = 'FLEX'
+                optimal_starters.append(player_copy)
+                used_players.add(player['sleeper_id'])
+                flex_filled += 1
+        
+        # Fill SUPER_FLEX positions (QB, RB, WR, TE eligible)
+        super_flex_needed = position_requirements.get('SUPER_FLEX', 0)
+        super_flex_filled = 0
+        
+        for player in all_available_players:
+            if (player['position'] in ['QB', 'RB', 'WR', 'TE'] and 
+                player['sleeper_id'] not in used_players and 
+                super_flex_filled < super_flex_needed):
+                player_copy = player.copy()
+                player_copy['flex_slot'] = 'SUPER_FLEX'
+                optimal_starters.append(player_copy)
+                used_players.add(player['sleeper_id'])
+                super_flex_filled += 1
+        
+        # Fill WRRB_FLEX positions (WR, RB eligible)
+        wrrb_flex_needed = position_requirements.get('WRRB_FLEX', 0)
+        wrrb_flex_filled = 0
+        
+        for player in all_available_players:
+            if (player['position'] in ['WR', 'RB'] and 
+                player['sleeper_id'] not in used_players and 
+                wrrb_flex_filled < wrrb_flex_needed):
+                player_copy = player.copy()
+                player_copy['flex_slot'] = 'WRRB_FLEX'
+                optimal_starters.append(player_copy)
+                used_players.add(player['sleeper_id'])
+                wrrb_flex_filled += 1
+        
+        # Add DST and K from current analysis (no optimization needed)
+        for starter in current_starters:
+            if starter['position'] in ['DEF', 'K']:
+                optimal_starters.append(starter)
+        
+        # Compare optimal vs current lineup to identify upgrades
+        free_agent_upgrades = []
+        current_player_ids = {s.get('sleeper_id') for s in current_starters if s.get('sleeper_id')}
+        
+        for optimal_player in optimal_starters:
+            if (optimal_player.get('is_free_agent', False) and 
+                optimal_player.get('sleeper_id') not in current_player_ids):
+                
+                # Find what this free agent is replacing
+                position = optimal_player['position']
+                flex_slot = optimal_player.get('flex_slot')
+                
+                # Find the corresponding player in current lineup that this replaces
+                replaced_player = None
+                for current_player in current_starters:
+                    if current_player['position'] == position and not replaced_player:
+                        # For flex positions, match by flex slot
+                        if flex_slot and current_player.get('flex_slot') == flex_slot:
+                            replaced_player = current_player
+                            break
+                        elif not flex_slot and not current_player.get('flex_slot'):
+                            replaced_player = current_player
+                            break
+                
+                if replaced_player:
+                    optimal_player['replaces_player'] = replaced_player
                     free_agent_upgrades.append({
                         'position': position,
-                        'drop': worst_starter,
-                        'add': best_fa,
-                        'improvement': worst_starter['rank'] - best_fa['rank']
+                        'drop': replaced_player,
+                        'add': optimal_player,
+                        'improvement': replaced_player['rank'] - optimal_player['rank']
                     })
-                    
-                    # Replace worst starter with free agent in optimal lineup
-                    for i, starter in enumerate(optimal_starters):
-                        if starter == worst_starter:
-                            optimal_starters[i] = upgraded_player
-                            break
-        
-        # DST and K are already included in optimal_starters since we copied current_starters
-        # No additional free agent analysis needed for these positions
         
         return {
             'optimal_starters': optimal_starters,
             'free_agent_upgrades': free_agent_upgrades,
-            'available_free_agents': free_agent_players[:10]  # Top 10 for reference
+            'available_free_agents': [p for p in all_available_players if p.get('is_free_agent', False)][:10]
         }
 
     @staticmethod
